@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/lucyliuu/mini-tmk-agent/internal/audio"
 	"github.com/lucyliuu/mini-tmk-agent/internal/pipeline"
 )
 
@@ -50,5 +51,29 @@ func TestRunTranscript_MissingFile(t *testing.T) {
 
 	if err == nil {
 		t.Error("expected error for missing input file")
+	}
+}
+
+// mockTranslate implements translate.Client for testing.
+type mockTranslate struct {
+	response string
+	err      error
+}
+
+func (m *mockTranslate) Translate(_ context.Context, _ string, _, _ string) (string, error) {
+	return m.response, m.err
+}
+
+func TestStreamConfig_DefaultVADConfig(t *testing.T) {
+	cfg := pipeline.StreamConfig{
+		SourceLang: "zh",
+		TargetLang: "en",
+		VADConfig:  audio.DefaultVADConfig(),
+	}
+	if cfg.SourceLang != "zh" {
+		t.Error("source lang not set")
+	}
+	if cfg.VADConfig.SampleRate != 16000 {
+		t.Error("VAD sample rate should default to 16000")
 	}
 }
