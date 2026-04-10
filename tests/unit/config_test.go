@@ -2,16 +2,28 @@ package unit_test
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/lucyliuu/mini-tmk-agent/config"
 )
 
 func TestLoad_MissingAPIKey(t *testing.T) {
+	orig := os.Getenv("OPENAI_API_KEY")
+	defer func() {
+		if orig == "" {
+			os.Unsetenv("OPENAI_API_KEY")
+		} else {
+			os.Setenv("OPENAI_API_KEY", orig)
+		}
+	}()
 	os.Unsetenv("OPENAI_API_KEY")
 	_, err := config.Load()
 	if err == nil {
 		t.Fatal("expected error when OPENAI_API_KEY is missing")
+	}
+	if !strings.Contains(err.Error(), "OPENAI_API_KEY") {
+		t.Errorf("error message should mention OPENAI_API_KEY, got: %v", err)
 	}
 }
 
@@ -68,6 +80,9 @@ func TestOverride_EmptyDoesNotReplace(t *testing.T) {
 	cfg, _ := config.Load()
 	cfg.Override("", "")
 	if cfg.APIKey != "sk-original" {
-		t.Errorf("Override with empty string should not replace existing value")
+		t.Errorf("Override with empty apiKey should not replace existing value")
+	}
+	if cfg.BaseURL != "https://api.openai.com/v1" {
+		t.Errorf("Override with empty baseURL should not replace existing value")
 	}
 }
