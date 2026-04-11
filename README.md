@@ -2,7 +2,7 @@
 
 A simultaneous interpretation CLI agent built with Go. Supports real-time microphone translation, audio file transcription, and TTS audio output.
 
-Powered by OpenAI Whisper-1 (ASR) / Deepgram Nova-2 (streaming ASR), GPT-4o-mini (translation), and OpenAI TTS-1 (text-to-speech).
+Powered by OpenAI Whisper-1 (ASR) / Deepgram Nova-2 (streaming ASR), GPT-4o-mini (translation), OpenAI TTS-1 (text-to-speech), and LiveKit (RTC cross-device relay).
 
 ---
 
@@ -18,7 +18,7 @@ brew install portaudio
 sudo apt install portaudio19-dev libportaudio2
 ```
 
-**Go 1.21+** and an **OpenAI API key** are required. A **Deepgram API key** is optional but recommended for low-latency streaming.
+**Go 1.21+** and an **OpenAI API key** are required. A **Deepgram API key** is required for stream mode. A **LiveKit Cloud** account is optional (for cross-device RTC relay).
 
 ---
 
@@ -45,6 +45,12 @@ export DEEPGRAM_API_KEY=dg-...
 
 # Optional: override API endpoint (e.g. for a proxy)
 export OPENAI_BASE_URL=https://api.openai.com/v1
+
+# Optional: LiveKit for cross-device RTC relay
+# Sign up at https://cloud.livekit.io (free tier, no credit card)
+export LIVEKIT_URL=wss://your-project.livekit.cloud
+export LIVEKIT_API_KEY=APIxxxxx
+export LIVEKIT_API_SECRET=xxxxx
 ```
 
 ---
@@ -84,6 +90,20 @@ Output example:
 ```
 
 > **Headphones recommended** when using TTS. Without them, TTS audio may be picked up by the microphone, causing a feedback loop. Speaker mode mitigates this by pausing the mic during playback but loses speech during that time.
+
+**Cross-device RTC mode (LiveKit):**
+
+```bash
+# Terminal A (speaker): speaks into mic, translations sent to LiveKit room
+./bin/mini-tmk-agent stream --source-lang zh --target-lang en \
+  --room my-room --role speaker
+
+# Terminal B (listener, can be on a different machine): receives translations + TTS
+./bin/mini-tmk-agent stream --source-lang zh --target-lang en \
+  --room my-room --role listener --tts
+```
+
+Speaker A talks in Chinese → Listener B sees English text and hears English TTS, in real time, across the internet.
 
 Press `Ctrl+C` to stop.
 
@@ -149,6 +169,8 @@ Transcript mode:
 
 **TTS:** Translation text is sent to OpenAI TTS-1 asynchronously via a dedicated goroutine. Audio is streamed back in PCM 24kHz format and played through PortAudio. A non-blocking channel ensures TTS never blocks the main pipeline.
 
+**RTC Relay (LiveKit):** In speaker mode, interim/final results are published to a LiveKit room via WebRTC Data Channel (reliable mode). In listener mode, no microphone is needed — the pipeline receives messages from the room and feeds them to display + TTS. LiveKit Cloud handles NAT traversal and global routing.
+
 **Speaker mode:** An `atomic.Bool` flag tracks TTS playback state. When enabled, the audio-sending goroutine skips frames during playback to prevent feedback loops.
 
 **Graceful shutdown:** `Ctrl+C` triggers `context.Cancel()`, propagates through all goroutines via channel cascade.
@@ -173,6 +195,8 @@ internal/translate/openai.go  GPT-4o-mini translation (Client interface)
 internal/tts/
   tts.go                      TTS client interface + OpenAI TTS-1 implementation
   player.go                   PortAudio PCM playback with IsPlaying flag
+internal/rtc/
+  livekit.go                  LiveKit RTC client (connect, send, receive via Data Channel)
 internal/pipeline/
   stream.go                   Streaming + batch real-time pipelines with TTS
   transcript.go               Sequential file transcription

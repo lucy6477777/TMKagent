@@ -9,6 +9,7 @@ import (
 	"github.com/lucyliuu/mini-tmk-agent/internal/asr"
 	"github.com/lucyliuu/mini-tmk-agent/internal/audio"
 	"github.com/lucyliuu/mini-tmk-agent/internal/display"
+	"github.com/lucyliuu/mini-tmk-agent/internal/rtc"
 	"github.com/lucyliuu/mini-tmk-agent/internal/translate"
 	"github.com/lucyliuu/mini-tmk-agent/internal/tts"
 )
@@ -18,19 +19,32 @@ type StreamConfig struct {
 	SourceLang string
 	TargetLang string
 
-	// Streaming ASR (Deepgram).
+	// Streaming ASR (Deepgram). Required for speaker/solo modes.
 	StreamASR asr.StreamClient
 
-	// TTS options. EnableTTS activates text-to-speech output.
+	// TTS options.
 	EnableTTS      bool
-	TTSSpeakerMode bool // when true, mic input pauses during TTS playback
+	TTSSpeakerMode bool
 	TTSClient      tts.Client
 	TTSPlayer      *tts.Player
+
+	// RTC relay. When set, translation results are sent/received via LiveKit.
+	RTCClient *rtc.Client
+	Role      string // "speaker", "listener", or "" (solo mode)
 }
 
-// RunStream starts the real-time microphone→ASR→translate→display pipeline.
-// Blocks until ctx is cancelled (e.g. by Ctrl+C).
+// RunStream starts the real-time pipeline. In speaker/solo mode it captures
+// from microphone; in listener mode it receives from the RTC relay.
 func RunStream(ctx context.Context, cfg StreamConfig, translateClient translate.Client) error {
+	if cfg.Role == "listener" {
+		return runListenerPipeline(ctx, cfg)
+	}
+	return runSpeakerPipeline(ctx, cfg, translateClient)
+}
+
+// ---------- Speaker / Solo pipeline ----------
+
+func runSpeakerPipeline(ctx context.Context, cfg StreamConfig, translateClient translate.Client) error {
 	capturer, frameCh, err := audio.NewCapturer()
 	if err != nil {
 		return err
@@ -50,16 +64,7 @@ func RunStream(ctx context.Context, cfg StreamConfig, translateClient translate.
 	}
 
 	fmt.Println("Listening... Press Ctrl+C to stop.")
-	return runStreamingPipeline(ctx, cfg, frameCh, translateClient, ml)
-}
 
-func runStreamingPipeline(
-	ctx context.Context,
-	cfg StreamConfig,
-	frameCh <-chan []int16,
-	translateClient translate.Client,
-	ml *metricsLogger,
-) error {
 	session, err := cfg.StreamASR.Connect(ctx, cfg.SourceLang)
 	if err != nil {
 		return fmt.Errorf("connecting to streaming ASR: %w", err)
@@ -93,7 +98,7 @@ func runStreamingPipeline(
 		}
 	}()
 
-	// Main goroutine: read ASR results → translate → display → TTS
+	// Main goroutine: ASR results → translate → display → RTC relay → TTS
 	w := display.NewWriter()
 	for result := range session.Results() {
 		select {
@@ -104,6 +109,9 @@ func runStreamingPipeline(
 
 		if !result.IsFinal {
 			w.PrintInterim(result.Text)
+			if cfg.RTCClient != nil {
+				cfg.RTCClient.Send(rtc.RelayMsg{Type: "interim", Text: result.Text}) //nolint:errcheck
+			}
 			continue
 		}
 
@@ -130,6 +138,11 @@ func runStreamingPipeline(
 
 		w.PrintFinal(display.Pair{Source: src, Target: translated})
 
+		// Send to RTC relay for remote listeners
+		if cfg.RTCClient != nil && translated != "[翻译失败]" {
+			cfg.RTCClient.Send(rtc.RelayMsg{Type: "pair", Source: src, Target: translated}) //nolint:errcheck
+		}
+
 		if ttsCh != nil && translated != "[翻译失败]" {
 			select {
 			case ttsCh <- translated:
@@ -138,6 +151,47 @@ func runStreamingPipeline(
 		}
 	}
 	return nil
+}
+
+// ---------- Listener pipeline (no microphone, receives from RTC) ----------
+
+func runListenerPipeline(ctx context.Context, cfg StreamConfig) error {
+	if cfg.RTCClient == nil {
+		return fmt.Errorf("listener mode requires --room flag")
+	}
+
+	var ttsCh chan string
+	if cfg.EnableTTS && cfg.TTSClient != nil && cfg.TTSPlayer != nil {
+		ttsCh = make(chan string, 3)
+		go runTTSWorker(ctx, cfg.TTSClient, cfg.TTSPlayer, ttsCh)
+	}
+
+	fmt.Println("Waiting for translations... Press Ctrl+C to stop.")
+
+	w := display.NewWriter()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case msg, ok := <-cfg.RTCClient.Messages():
+			if !ok {
+				return nil
+			}
+			switch msg.Type {
+			case "interim":
+				w.PrintInterim(msg.Text)
+			case "pair":
+				w.ClearInterim()
+				w.PrintFinal(display.Pair{Source: msg.Source, Target: msg.Target})
+				if ttsCh != nil {
+					select {
+					case ttsCh <- msg.Target:
+					default:
+					}
+				}
+			}
+		}
+	}
 }
 
 // ---------- TTS worker ----------

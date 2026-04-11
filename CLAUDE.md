@@ -88,6 +88,7 @@ Go CLI 同声传译 Agent，面试作业项目。支持两种运行模式 + Web 
 | 文件 ASR | OpenAI Whisper-1（batch，用于 transcript 模式） |
 | 翻译 | OpenAI GPT-4o-mini |
 | TTS | OpenAI TTS-1（PCM 24kHz 流式播放） |
+| RTC 跨端通信 | LiveKit（WebRTC Data Channel，`github.com/livekit/server-sdk-go/v2`） |
 | Go OpenAI SDK | `github.com/sashabaranov/go-openai` |
 | WebSocket | `github.com/gorilla/websocket`（Deepgram 连接 + Web UI） |
 | 并发模型 | goroutine + channel 流水线 |
@@ -116,6 +117,8 @@ mini-tmk-agent/
 │   ├── tts/
 │   │   ├── tts.go           # TTS Client 接口 + OpenAI TTS-1 实现（流式 PCM）
 │   │   └── player.go        # PortAudio PCM 播放（persistent stream, IsPlaying flag）
+│   ├── rtc/
+│   │   └── livekit.go       # LiveKit RTC 客户端（WebRTC Data Channel 收发）
 │   ├── pipeline/
 │   │   ├── stream.go        # Deepgram 流式 pipeline：interim/final → 翻译 → 显示 → TTS
 │   │   ├── transcript.go    # 文件转录 pipeline
@@ -166,6 +169,20 @@ mini-tmk-agent/
 2. 耳机模式（全双工）：`stream --tts` — 麦克风和 TTS 同时工作
 3. 扬声器模式（半双工）：`stream --tts --tts-speaker-mode` — TTS 播放时暂停麦克风输入
 
+### RTC 跨端模式（LiveKit）
+
+```
+Speaker 终端:                              Listener 终端（可以在另一台机器上）:
+  Mic → Deepgram ASR → GPT 翻译              
+    interim text ──→ LiveKit Room ──→ 显示灰色临时文字
+    pair {src,tgt} ──→ LiveKit Room ──→ 显示 [SRC]/[TGT] → TTS 播放
+```
+
+- Speaker 模式：`stream --room <name> --role speaker` — 本地采集+翻译+发送到房间
+- Listener 模式：`stream --room <name> --role listener --tts` — 不需要麦克风，从房间接收+显示+TTS
+- 数据通过 LiveKit WebRTC Data Channel（reliable 模式）传输
+- LiveKit Cloud 处理 NAT 穿透和全球路由
+
 ---
 
 ## 代码规范
@@ -186,6 +203,11 @@ mini-tmk-agent/
 export OPENAI_API_KEY=sk-...                           # 必须：翻译 + TTS + transcript ASR
 export DEEPGRAM_API_KEY=dg-...                         # 必须（stream 模式）：流式 ASR
 export OPENAI_BASE_URL=https://api.openai.com/v1       # 可选，默认值
+
+# RTC 跨端模式（可选）
+export LIVEKIT_URL=wss://your-project.livekit.cloud
+export LIVEKIT_API_KEY=APIxxxxx
+export LIVEKIT_API_SECRET=xxxxx
 ```
 
 CLI flag `--api-key`、`--base-url`、`--deepgram-api-key` 可覆盖环境变量。
@@ -224,7 +246,7 @@ make clean              # rm -rf bin/
 
 - [x] TTS：OpenAI `tts-1` 模型流式播放译文音频（三档模式）
 - [x] Web UI：Go HTTP server + WebSocket + React SPA
-- [ ] RTC 跨端：火山引擎 RTC 或声网 RTC
+- [x] RTC 跨端：LiveKit WebRTC Data Channel（speaker/listener 模式，跨互联网）
 - [ ] 更多语言支持
 
 ---

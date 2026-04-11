@@ -10,10 +10,14 @@ type Config struct {
 	APIKey         string
 	BaseURL        string
 	DeepgramAPIKey string
+
+	LiveKitURL       string
+	LiveKitAPIKey    string
+	LiveKitAPISecret string
 }
 
 // Load reads API keys from environment.
-// OPENAI_API_KEY is required. DEEPGRAM_API_KEY is optional (enables streaming ASR).
+// OPENAI_API_KEY is required. Other keys are optional.
 func Load() (*Config, error) {
 	apiKey := os.Getenv("OPENAI_API_KEY")
 	if apiKey == "" {
@@ -28,9 +32,12 @@ func Load() (*Config, error) {
 		baseURL = "https://api.openai.com/v1"
 	}
 	return &Config{
-		APIKey:         apiKey,
-		BaseURL:        baseURL,
-		DeepgramAPIKey: os.Getenv("DEEPGRAM_API_KEY"),
+		APIKey:           apiKey,
+		BaseURL:          baseURL,
+		DeepgramAPIKey:   os.Getenv("DEEPGRAM_API_KEY"),
+		LiveKitURL:       os.Getenv("LIVEKIT_URL"),
+		LiveKitAPIKey:    os.Getenv("LIVEKIT_API_KEY"),
+		LiveKitAPISecret: os.Getenv("LIVEKIT_API_SECRET"),
 	}, nil
 }
 

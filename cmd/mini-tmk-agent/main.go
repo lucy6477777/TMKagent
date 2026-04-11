@@ -12,6 +12,7 @@ import (
 	"github.com/lucyliuu/mini-tmk-agent/config"
 	"github.com/lucyliuu/mini-tmk-agent/internal/asr"
 	"github.com/lucyliuu/mini-tmk-agent/internal/pipeline"
+	"github.com/lucyliuu/mini-tmk-agent/internal/rtc"
 	"github.com/lucyliuu/mini-tmk-agent/internal/translate"
 	"github.com/lucyliuu/mini-tmk-agent/internal/tts"
 )
@@ -36,7 +37,10 @@ Prerequisites:
 
 Environment:
   OPENAI_API_KEY   (required) Your OpenAI API key
-  DEEPGRAM_API_KEY (required for stream) Deepgram API key for streaming ASR`,
+  DEEPGRAM_API_KEY (required for stream) Deepgram API key for streaming ASR
+  LIVEKIT_URL      (optional) LiveKit Cloud project URL for RTC relay
+  LIVEKIT_API_KEY  (optional) LiveKit API key
+  LIVEKIT_API_SECRET (optional) LiveKit API secret`,
 	}
 
 	root.PersistentFlags().StringVar(&apiKeyFlag, "api-key", "", "OpenAI API key (overrides OPENAI_API_KEY env var)")
@@ -69,47 +73,75 @@ func newStreamCmd() *cobra.Command {
 		enableTTS      bool
 		ttsVoice       string
 		ttsSpeakerMode bool
+		room           string
+		role           string
 	)
 
 	cmd := &cobra.Command{
 		Use:   "stream",
 		Short: "Real-time microphone translation to terminal",
-		Example: `  # Streaming translation (requires DEEPGRAM_API_KEY)
+		Example: `  # Solo mode (default, single terminal)
   mini-tmk-agent stream --source-lang zh --target-lang en
 
-  # With TTS output (requires headphones for full-duplex)
+  # With TTS
   mini-tmk-agent stream --source-lang zh --target-lang en --tts
 
-  # TTS with speakers (half-duplex: mic pauses during playback)
-  mini-tmk-agent stream --source-lang zh --target-lang en --tts --tts-speaker-mode`,
+  # RTC mode: Speaker (speaks into mic, sends translations to room)
+  mini-tmk-agent stream --source-lang zh --target-lang en --room my-room --role speaker
+
+  # RTC mode: Listener (receives translations from room, plays TTS)
+  mini-tmk-agent stream --source-lang zh --target-lang en --room my-room --role listener --tts`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := loadConfig()
-
-			if cfg.DeepgramAPIKey == "" {
-				return fmt.Errorf(
-					"DEEPGRAM_API_KEY is required for stream mode\n" +
-						"  Sign up at https://console.deepgram.com ($200 free credits)\n" +
-						"  Run: export DEEPGRAM_API_KEY=dg-...\n" +
-						"  Or:  mini-tmk-agent --deepgram-api-key dg-...",
-				)
-			}
 
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
 
-			translateClient := translate.NewOpenAIClient(cfg.APIKey, cfg.BaseURL)
-
 			streamCfg := pipeline.StreamConfig{
 				SourceLang: sourceLang,
 				TargetLang: targetLang,
-				StreamASR:  asr.NewDeepgramStreamClient(cfg.DeepgramAPIKey),
+				Role:       role,
 			}
 
+			// Listener mode doesn't need Deepgram or mic
+			if role != "listener" {
+				if cfg.DeepgramAPIKey == "" {
+					return fmt.Errorf(
+						"DEEPGRAM_API_KEY is required for stream mode\n" +
+							"  Sign up at https://console.deepgram.com ($200 free credits)\n" +
+							"  Run: export DEEPGRAM_API_KEY=dg-...",
+					)
+				}
+				streamCfg.StreamASR = asr.NewDeepgramStreamClient(cfg.DeepgramAPIKey)
+			}
+
+			// Connect to LiveKit room if --room is specified
+			if room != "" {
+				if cfg.LiveKitURL == "" || cfg.LiveKitAPIKey == "" || cfg.LiveKitAPISecret == "" {
+					return fmt.Errorf(
+						"LIVEKIT_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET are required for RTC mode\n" +
+							"  Sign up at https://cloud.livekit.io (free tier available)\n" +
+							"  Run: export LIVEKIT_URL=wss://... LIVEKIT_API_KEY=... LIVEKIT_API_SECRET=...",
+					)
+				}
+				if role == "" {
+					return fmt.Errorf("--role is required when --room is set (speaker or listener)")
+				}
+				identity := fmt.Sprintf("%s-%d", role, os.Getpid())
+				rtcClient, err := rtc.Connect(ctx, cfg.LiveKitURL, cfg.LiveKitAPIKey, cfg.LiveKitAPISecret, room, identity)
+				if err != nil {
+					return err
+				}
+				defer rtcClient.Close()
+				streamCfg.RTCClient = rtcClient
+			}
+
+			// TTS setup
 			if enableTTS {
 				streamCfg.EnableTTS = true
 				streamCfg.TTSSpeakerMode = ttsSpeakerMode
 				streamCfg.TTSClient = tts.NewOpenAIClient(cfg.APIKey, cfg.BaseURL, ttsVoice, "pcm")
-				streamCfg.TTSPlayer = tts.NewPlayer(true)
+				streamCfg.TTSPlayer = tts.NewPlayer(role != "listener") // listener has no capturer to share PortAudio init with
 				if ttsSpeakerMode {
 					fmt.Println("TTS enabled (speaker mode: mic pauses during playback)")
 				} else {
@@ -117,6 +149,7 @@ func newStreamCmd() *cobra.Command {
 				}
 			}
 
+			translateClient := translate.NewOpenAIClient(cfg.APIKey, cfg.BaseURL)
 			return pipeline.RunStream(ctx, streamCfg, translateClient)
 		},
 	}
@@ -126,6 +159,8 @@ func newStreamCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&enableTTS, "tts", false, "Enable TTS audio output for translations")
 	cmd.Flags().StringVar(&ttsVoice, "tts-voice", "alloy", "TTS voice (alloy|echo|fable|onyx|nova|shimmer)")
 	cmd.Flags().BoolVar(&ttsSpeakerMode, "tts-speaker-mode", false, "Pause mic during TTS playback (use with speakers, not headphones)")
+	cmd.Flags().StringVar(&room, "room", "", "LiveKit room name for RTC relay (enables multi-terminal mode)")
+	cmd.Flags().StringVar(&role, "role", "", "Role in RTC mode: speaker or listener")
 	return cmd
 }
 
@@ -149,7 +184,7 @@ func newTranscriptCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&filePath, "file", "", "Input audio file (.wav, .mp3, .pcm)")
+	cmd.Flags().StringVar(&filePath, "file", "", "Input audio file (.wav, .mp3, .m4a, .pcm)")
 	cmd.Flags().StringVar(&outputPath, "output", "", "Output text file path")
 	cmd.Flags().StringVar(&sourceLang, "source-lang", "", "Source language code (default: auto-detect)")
 	_ = cmd.MarkFlagRequired("file")
