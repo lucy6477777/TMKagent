@@ -1,7 +1,6 @@
 package tts
 
 import (
-	"bytes"
 	"encoding/binary"
 	"io"
 	"log"
@@ -14,12 +13,11 @@ import (
 const (
 	playerSampleRate = 24000 // OpenAI TTS PCM output is 24kHz
 	playerChannels   = 1
-	playerFrameSize  = 4096 // ~170ms buffer at 24kHz; large buffer reduces underrun risk
+	playerFrameSize  = 4096 // ~170ms buffer at 24kHz
 )
 
 // Player plays PCM audio through PortAudio speakers.
-// The output stream is opened once and reused across sentences to avoid
-// repeated ALSA initialisation overhead that causes underruns.
+// The output stream is opened once and reused across sentences.
 type Player struct {
 	playing  atomic.Bool
 	stream   *portaudio.Stream
@@ -38,7 +36,6 @@ func (p *Player) IsPlaying() bool {
 	return p.playing.Load()
 }
 
-// ensureStream lazily opens a persistent PortAudio output stream.
 func (p *Player) ensureStream() error {
 	if p.stream != nil {
 		return nil
@@ -62,7 +59,7 @@ func (p *Player) ensureStream() error {
 	return nil
 }
 
-// Stop closes the persistent output stream. Call once when done with TTS.
+// Stop closes the persistent output stream.
 func (p *Player) Stop() {
 	if p.stream != nil {
 		p.stream.Stop()  //nolint:errcheck
@@ -71,27 +68,10 @@ func (p *Player) Stop() {
 	}
 }
 
-// PlayStream reads ALL PCM data from r into memory, decodes to int16 samples,
-// then feeds them to the persistent PortAudio output stream.
+// PlayStream reads PCM 24kHz/16-bit/mono directly from r and plays in real-time.
+// Starts playing as soon as the first chunk arrives from the network — no buffering.
+// Underruns are non-fatal (brief glitch, playback continues).
 func (p *Player) PlayStream(r io.Reader) error {
-	// 1. Buffer entire audio to decouple network I/O from playback
-	var raw bytes.Buffer
-	if _, err := io.Copy(&raw, r); err != nil {
-		return err
-	}
-	pcmData := raw.Bytes()
-	if len(pcmData) < 2 {
-		return nil
-	}
-
-	// 2. Pre-decode all int16 samples (no CPU work during playback loop)
-	totalSamples := len(pcmData) / 2
-	samples := make([]int16, totalSamples)
-	for i := 0; i < totalSamples; i++ {
-		samples[i] = int16(binary.LittleEndian.Uint16(pcmData[i*2 : i*2+2]))
-	}
-
-	// 3. Ensure persistent output stream is open
 	if err := p.ensureStream(); err != nil {
 		return err
 	}
@@ -99,26 +79,32 @@ func (p *Player) PlayStream(r io.Reader) error {
 	p.playing.Store(true)
 	defer p.playing.Store(false)
 
-	// 4. Feed pre-decoded frames — underrun is non-fatal, just continue
-	for offset := 0; offset < totalSamples; offset += playerFrameSize {
-		end := offset + playerFrameSize
-		if end > totalSamples {
-			end = totalSamples
-		}
-		n := end - offset
-		copy(p.buf[:n], samples[offset:end])
-		for i := n; i < playerFrameSize; i++ {
-			p.buf[i] = 0
-		}
-		if err := p.stream.Write(); err != nil {
-			if isUnderrun(err) {
-				log.Printf("[WARN] audio underrun (recovered, continuing)")
-				continue
+	readBuf := make([]byte, playerFrameSize*2) // 2 bytes per int16
+	for {
+		n, err := io.ReadFull(r, readBuf)
+		if n > 0 {
+			samples := n / 2
+			for i := 0; i < samples; i++ {
+				p.buf[i] = int16(binary.LittleEndian.Uint16(readBuf[i*2 : i*2+2]))
 			}
+			for i := samples; i < playerFrameSize; i++ {
+				p.buf[i] = 0
+			}
+			if werr := p.stream.Write(); werr != nil {
+				if isUnderrun(werr) {
+					log.Printf("[WARN] audio underrun (recovered)")
+					continue
+				}
+				return werr
+			}
+		}
+		if err == io.EOF || err == io.ErrUnexpectedEOF {
+			return nil
+		}
+		if err != nil {
 			return err
 		}
 	}
-	return nil
 }
 
 func isUnderrun(err error) bool {
