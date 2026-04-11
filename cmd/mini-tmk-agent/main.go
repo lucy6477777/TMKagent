@@ -42,6 +42,7 @@ Environment:
 
 	root.AddCommand(newStreamCmd())
 	root.AddCommand(newTranscriptCmd())
+	root.AddCommand(newWebCmd())
 
 	if err := root.Execute(); err != nil {
 		os.Exit(1)

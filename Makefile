@@ -1,8 +1,17 @@
-.PHONY: build test test-integration lint clean
+.PHONY: build web-build web-dev test test-integration lint clean
 
 BINARY := bin/mini-tmk-agent
 
-build:
+web-build:
+	cd web && npm ci && npm run build
+	rm -rf internal/web/static/*
+	cp -r web/dist/* internal/web/static/
+	touch internal/web/static/.gitkeep
+
+web-dev:
+	cd web && npm run dev
+
+build: web-build
 	go build -o $(BINARY) ./cmd/mini-tmk-agent
 
 test:

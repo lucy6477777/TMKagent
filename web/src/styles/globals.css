@@ -1,0 +1,73 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-page:       #F8F9FA;
+  --bg-sidebar:    #FFFFFF;
+  --bg-card:       #FFFFFF;
+  --border:        #E5E7EB;
+  --nav-active:    #1E3A5F;
+  --nav-text:      #374151;
+  --text-primary:  #111827;
+  --text-secondary:#6B7280;
+  --tag-src:       #64748B;
+  --tag-tgt:       #1E3A5F;
+  --btn-primary:   #1E3A5F;
+  --btn-hover:     #2D5A8E;
+  --status-live:   #10B981;
+  --status-idle:   #9CA3AF;
+  --error:         #DC2626;
+  --progress-fill: #1E3A5F;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg-page);
+  color: var(--text-primary);
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .status-pulse {
+    animation: status-pulse 2s ease-in-out infinite;
+  }
+}
+
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.5; transform: scale(1.3); }
+}
+
+:focus-visible {
+  outline: 2px solid #1E3A5F;
+  outline-offset: 2px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
