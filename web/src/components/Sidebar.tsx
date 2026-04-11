@@ -1,16 +1,18 @@
-import { AudioLines, FileText, Settings } from 'lucide-react'
+import { AudioLines, FileText, House, Radio, Settings } from 'lucide-react'
 
-type Page = 'stream' | 'transcript'
+export type Page = 'home' | 'stream' | 'transcript' | 'rtc'
 
 interface NavItem {
-  id: Page | 'settings'
+  id: Page
   label: string
   Icon: typeof AudioLines
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { id: 'stream',     label: 'Stream',     Icon: AudioLines },
-  { id: 'transcript', label: 'Transcript', Icon: FileText },
+  { id: 'home',       label: '首页',     Icon: House },
+  { id: 'stream',     label: '实时翻译', Icon: AudioLines },
+  { id: 'transcript', label: '文件转录', Icon: FileText },
+  { id: 'rtc',        label: '跨端协作', Icon: Radio },
 ]
 
 interface Props {
@@ -37,7 +39,7 @@ export function Sidebar({ current, onChange }: Props) {
           return (
             <button
               key={id}
-              onClick={() => onChange(id as Page)}
+              onClick={() => onChange(id)}
               aria-current={isActive ? 'page' : undefined}
               style={{
                 width: '100%',
@@ -48,11 +50,11 @@ export function Sidebar({ current, onChange }: Props) {
                 paddingLeft: isActive ? 16 : 20,
                 paddingRight: 16,
                 border: 'none',
-                borderLeft: isActive ? '4px solid #1E3A5F' : '4px solid transparent',
-                background: isActive ? '#1E3A5F' : 'transparent',
-                color: isActive ? '#FFFFFF' : '#374151',
+                borderLeft: isActive ? '4px solid #2563EB' : '4px solid transparent',
+                background: isActive ? '#EFF6FF' : 'transparent',
+                color: isActive ? '#2563EB' : '#374151',
                 fontFamily: "'IBM Plex Sans', sans-serif",
-                fontWeight: isActive ? 500 : 400,
+                fontWeight: isActive ? 600 : 400,
                 fontSize: 14,
                 cursor: 'pointer',
                 textAlign: 'left',
@@ -66,7 +68,6 @@ export function Sidebar({ current, onChange }: Props) {
         })}
       </div>
 
-      {/* Divider + Settings placeholder */}
       <div style={{ borderTop: '1px solid #E5E7EB', padding: '12px 0' }}>
         <button
           style={{
@@ -80,11 +81,11 @@ export function Sidebar({ current, onChange }: Props) {
             border: 'none',
             borderLeft: '4px solid transparent',
             background: 'transparent',
-            color: '#374151',
+            color: '#9CA3AF',
             fontFamily: "'IBM Plex Sans', sans-serif",
             fontWeight: 400,
             fontSize: 14,
-            cursor: 'pointer',
+            cursor: 'not-allowed',
             textAlign: 'left',
           }}
           disabled

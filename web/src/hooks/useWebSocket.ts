@@ -7,6 +7,7 @@ interface UseWebSocketReturn {
   status: ConnectionStatus
   pipelineState: PipelineState
   pairs: SubtitlePair[]
+  interim: string
   progress: { current: number; total: number } | null
   sendCmd: (cmd: WSCommand) => void
   clearPairs: () => void
@@ -25,6 +26,7 @@ export function useWebSocket(url: string): UseWebSocketReturn {
   const [status, setStatus] = useState<ConnectionStatus>('connecting')
   const [pipelineState, setPipelineState] = useState<PipelineState>('idle')
   const [pairs, setPairs] = useState<SubtitlePair[]>([])
+  const [interim, setInterim] = useState('')
   const [progress, setProgress] = useState<{ current: number; total: number } | null>(null)
 
   const connect = useCallback(() => {
@@ -58,10 +60,15 @@ export function useWebSocket(url: string): UseWebSocketReturn {
             }]
             return next.length > MAX_PAIRS ? next.slice(-MAX_PAIRS) : next
           })
+          setInterim('')
           setProgress(null)
+          break
+        case 'interim':
+          setInterim(msg.text)
           break
         case 'status':
           setPipelineState(msg.state)
+          if (msg.state === 'idle') setInterim('')
           break
         case 'progress':
           setProgress({ current: msg.current, total: msg.total })
@@ -107,8 +114,9 @@ export function useWebSocket(url: string): UseWebSocketReturn {
 
   const clearPairs = useCallback(() => {
     setPairs([])
+    setInterim('')
     setProgress(null)
   }, [])
 
-  return { status, pipelineState, pairs, progress, sendCmd, clearPairs }
+  return { status, pipelineState, pairs, interim, progress, sendCmd, clearPairs }
 }

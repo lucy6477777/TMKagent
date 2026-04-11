@@ -26,7 +26,7 @@ export function Topbar({ pipelineState }: Props) {
           fontFamily: "'IBM Plex Sans', sans-serif",
           fontWeight: 600,
           fontSize: 18,
-          color: '#1E3A5F',
+          color: '#2563EB',
           letterSpacing: '-0.02em',
         }}
       >

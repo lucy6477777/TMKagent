@@ -47,10 +47,11 @@ function PairItem({ pair, isLatest, showCopy, isNew }: PairItemProps) {
       style={{
         padding: '16px 0',
         borderBottom: '1px solid #E5E7EB',
-        borderLeft: isLatest ? '2px solid #1E3A5F' : '2px solid transparent',
+        borderLeft: isLatest ? '3px solid #2563EB' : '3px solid transparent',
         paddingLeft: 12,
-        opacity: isLatest ? 1 : 0.55,
-        transition: 'opacity 600ms ease',
+        background: isLatest ? '#F8FBFF' : 'transparent',
+        opacity: isLatest ? 1 : 0.5,
+        transition: 'opacity 600ms ease, background 300ms ease',
         position: 'relative',
         transform: isNew && !prefersReducedMotion && !visible
           ? 'translateY(8px)' : 'translateY(0)',
@@ -58,7 +59,7 @@ function PairItem({ pair, isLatest, showCopy, isNew }: PairItemProps) {
           transition: visible
             ? 'transform 200ms ease-out, opacity 200ms ease-out'
             : 'none',
-          opacity: visible ? (isLatest ? 1 : 0.55) : 0,
+          opacity: visible ? (isLatest ? 1 : 0.5) : 0,
         } : {}),
       }}
     >
@@ -92,7 +93,7 @@ function PairItem({ pair, isLatest, showCopy, isNew }: PairItemProps) {
           fontWeight: 500,
           fontSize: 11,
           letterSpacing: '0.05em',
-          background: '#1E3A5F',
+          background: '#2563EB',
           color: '#FFFFFF',
           borderRadius: 4,
           padding: '2px 8px',

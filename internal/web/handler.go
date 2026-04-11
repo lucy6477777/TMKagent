@@ -13,6 +13,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/lucyliuu/mini-tmk-agent/internal/asr"
 	"github.com/lucyliuu/mini-tmk-agent/internal/audio"
+	"github.com/lucyliuu/mini-tmk-agent/internal/rtc"
 	"github.com/lucyliuu/mini-tmk-agent/internal/translate"
 )
 
@@ -24,6 +25,8 @@ type cmdMsg struct {
 	Action     string `json:"action"`
 	SourceLang string `json:"sourceLang"`
 	TargetLang string `json:"targetLang"`
+	Room       string `json:"room"`
+	Role       string `json:"role"`
 }
 
 // Outgoing messages to frontend.
@@ -48,6 +51,11 @@ type progressMsg struct {
 type errorMsg struct {
 	Type string `json:"type"`
 	Msg  string `json:"msg"`
+}
+
+type interimMsg struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
 }
 
 func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
@@ -99,6 +107,36 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 			s.startPipeline(func(ctx context.Context) {
 				s.runTranscript(ctx, conn, uploadPath, cmd.SourceLang, cmd.TargetLang)
 			})
+
+		case "rtc_speaker_start":
+			if s.cfg.LiveKitURL == "" {
+				sendJSON(conn, errorMsg{Type: "error", Msg: "LiveKit not configured (set LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET)"})
+				continue
+			}
+			room := cmd.Room
+			sourceLang := cmd.SourceLang
+			targetLang := cmd.TargetLang
+			sendJSON(conn, statusMsg{Type: "status", State: "listening"})
+			s.startPipeline(func(ctx context.Context) {
+				s.runRTCSpeaker(ctx, conn, room, sourceLang, targetLang)
+			})
+
+		case "rtc_join":
+			if s.cfg.LiveKitURL == "" {
+				sendJSON(conn, errorMsg{Type: "error", Msg: "LiveKit not configured (set LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET)"})
+				continue
+			}
+			room := cmd.Room
+			sendJSON(conn, statusMsg{Type: "status", State: "listening"})
+			s.startPipeline(func(ctx context.Context) {
+				s.runRTCListener(ctx, conn, room)
+			})
+
+		case "rtc_stop":
+			s.mu.Lock()
+			s.cancelPipeline()
+			s.mu.Unlock()
+			sendJSON(conn, statusMsg{Type: "status", State: "idle"})
 		}
 	}
 }
@@ -140,11 +178,25 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// runStream runs a microphone→VAD→ASR→translate pipeline, sending results over WebSocket.
-// Translation pairs are forwarded as pairMsg; errors are logged and skipped per chunk.
+// runStream runs a microphone→Deepgram streaming ASR→translate pipeline.
+// Interim results are sent as interimMsg; final results are translated and sent as pairMsg.
 func (s *Server) runStream(ctx context.Context, conn *websocket.Conn, sourceLang, targetLang string) {
-	asrClient := asr.NewWhisperClient(s.cfg.APIKey, s.cfg.BaseURL)
+	if s.cfg.DeepgramAPIKey == "" {
+		sendJSON(conn, errorMsg{Type: "error", Msg: "DEEPGRAM_API_KEY not set"})
+		sendJSON(conn, statusMsg{Type: "status", State: "idle"})
+		return
+	}
+
+	streamClient := asr.NewDeepgramStreamClient(s.cfg.DeepgramAPIKey)
 	translateClient := translate.NewOpenAIClient(s.cfg.APIKey, s.cfg.BaseURL)
+
+	session, err := streamClient.Connect(ctx, sourceLang)
+	if err != nil {
+		sendJSON(conn, errorMsg{Type: "error", Msg: err.Error()})
+		sendJSON(conn, statusMsg{Type: "status", State: "idle"})
+		return
+	}
+	defer session.Close()
 
 	capturer, frameCh, err := audio.NewCapturer()
 	if err != nil {
@@ -159,15 +211,8 @@ func (s *Server) runStream(ctx context.Context, conn *websocket.Conn, sourceLang
 	}
 	defer capturer.Stop()
 
-	vadCfg := audio.DefaultVADConfig()
-	vad := audio.NewVAD(vadCfg)
-
-	audioCh := make(chan []int16, 8)
-	asrCh := make(chan string, 8)
-
-	// g1: VAD — accumulate frames, emit speech chunks
+	// g1: stream audio frames to Deepgram
 	go func() {
-		defer close(audioCh)
 		for {
 			select {
 			case <-ctx.Done():
@@ -176,45 +221,33 @@ func (s *Server) runStream(ctx context.Context, conn *websocket.Conn, sourceLang
 				if !ok {
 					return
 				}
-				if chunk := vad.Feed(frame); chunk != nil {
-					select {
-					case audioCh <- chunk:
-					case <-ctx.Done():
-						return
-					}
+				if err := session.Send(audio.Int16ToBytes(frame)); err != nil {
+					log.Printf("[WARN] deepgram send: %v", err)
+					return
 				}
 			}
 		}
 	}()
 
-	// g2: ASR — transcribe audio chunks
-	go func() {
-		defer close(asrCh)
-		for chunk := range audioCh {
-			pcmBytes := audio.Int16ToBytes(chunk)
-			wavBytes := audio.PCMToWAV(pcmBytes, 16000, 1, 16)
-			text, err := asrClient.Transcribe(ctx, wavBytes, "audio.wav", sourceLang)
-			if err != nil {
-				log.Printf("[WARN] ASR error (skipping chunk): %v", err)
-				continue
-			}
-			if text == "" {
-				continue
-			}
-			select {
-			case asrCh <- text:
-			case <-ctx.Done():
-				return
-			}
+	// g2: receive results, forward interim immediately, translate finals
+	for result := range session.Results() {
+		select {
+		case <-ctx.Done():
+			sendJSON(conn, statusMsg{Type: "status", State: "idle"}) //nolint:errcheck
+			return
+		default:
 		}
-	}()
 
-	// g3: Translate and send to WebSocket
-	for text := range asrCh {
-		src := text
+		if !result.IsFinal {
+			sendJSON(conn, interimMsg{Type: "interim", Text: result.Text}) //nolint:errcheck
+			continue
+		}
+
+		// Final result — translate then send pair
+		src := result.Text
 		target := ""
 		if targetLang != "" && targetLang != sourceLang {
-			normalizedSrc, translated, err := translateClient.Translate(ctx, text, sourceLang, targetLang)
+			normalizedSrc, translated, err := translateClient.Translate(ctx, result.Text, sourceLang, targetLang)
 			if err != nil {
 				log.Printf("[WARN] translation error: %v", err)
 				target = "[翻译失败]"
@@ -225,7 +258,7 @@ func (s *Server) runStream(ctx context.Context, conn *websocket.Conn, sourceLang
 				}
 			}
 		} else {
-			target = text
+			target = result.Text
 		}
 		if err := sendJSON(conn, pairMsg{
 			Type:   "pair",
@@ -312,6 +345,144 @@ func (s *Server) runTranscript(ctx context.Context, conn *websocket.Conn, filePa
 	}
 
 	sendJSON(conn, statusMsg{Type: "status", State: "idle"}) //nolint:errcheck
+}
+
+// runRTCSpeaker connects to LiveKit as speaker, runs mic→ASR→translate pipeline,
+// and broadcasts pairs to the room while also sending them to the WebSocket client.
+func (s *Server) runRTCSpeaker(ctx context.Context, conn *websocket.Conn, roomName, sourceLang, targetLang string) {
+	rtcClient, err := rtc.Connect(ctx, s.cfg.LiveKitURL, s.cfg.LiveKitAPIKey, s.cfg.LiveKitAPISecret, roomName, "speaker-web")
+	if err != nil {
+		sendJSON(conn, errorMsg{Type: "error", Msg: err.Error()})
+		sendJSON(conn, statusMsg{Type: "status", State: "idle"})
+		return
+	}
+	defer rtcClient.Close()
+
+	asrClient := asr.NewWhisperClient(s.cfg.APIKey, s.cfg.BaseURL)
+	translateClient := translate.NewOpenAIClient(s.cfg.APIKey, s.cfg.BaseURL)
+
+	capturer, frameCh, err := audio.NewCapturer()
+	if err != nil {
+		sendJSON(conn, errorMsg{Type: "error", Msg: err.Error()})
+		sendJSON(conn, statusMsg{Type: "status", State: "idle"})
+		return
+	}
+	if err := capturer.Start(); err != nil {
+		sendJSON(conn, errorMsg{Type: "error", Msg: err.Error()})
+		sendJSON(conn, statusMsg{Type: "status", State: "idle"})
+		return
+	}
+	defer capturer.Stop()
+
+	vad := audio.NewVAD(audio.DefaultVADConfig())
+	audioCh := make(chan []int16, 8)
+	asrCh := make(chan string, 8)
+
+	go func() {
+		defer close(audioCh)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case frame, ok := <-frameCh:
+				if !ok {
+					return
+				}
+				if chunk := vad.Feed(frame); chunk != nil {
+					select {
+					case audioCh <- chunk:
+					case <-ctx.Done():
+						return
+					}
+				}
+			}
+		}
+	}()
+
+	go func() {
+		defer close(asrCh)
+		for chunk := range audioCh {
+			pcmBytes := audio.Int16ToBytes(chunk)
+			wavBytes := audio.PCMToWAV(pcmBytes, 16000, 1, 16)
+			text, err := asrClient.Transcribe(ctx, wavBytes, "audio.wav", sourceLang)
+			if err != nil {
+				log.Printf("[WARN] ASR error: %v", err)
+				continue
+			}
+			if text == "" {
+				continue
+			}
+			select {
+			case asrCh <- text:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	for text := range asrCh {
+		src := text
+		target := ""
+		if targetLang != "" && targetLang != sourceLang {
+			normalizedSrc, translated, err := translateClient.Translate(ctx, text, sourceLang, targetLang)
+			if err != nil {
+				log.Printf("[WARN] translation error: %v", err)
+				target = "[翻译失败]"
+			} else {
+				target = translated
+				if normalizedSrc != "" {
+					src = normalizedSrc
+				}
+			}
+		} else {
+			target = text
+		}
+
+		// Broadcast to room
+		rtcClient.Send(rtc.RelayMsg{Type: "pair", Source: src, Target: target}) //nolint:errcheck
+
+		// Also send to this WebSocket client
+		if err := sendJSON(conn, pairMsg{Type: "pair", Source: src, Target: target, Ts: time.Now().UnixMilli()}); err != nil {
+			return
+		}
+	}
+
+	sendJSON(conn, statusMsg{Type: "status", State: "idle"}) //nolint:errcheck
+}
+
+// runRTCListener connects to LiveKit as listener and forwards received pairs to the WebSocket client.
+func (s *Server) runRTCListener(ctx context.Context, conn *websocket.Conn, roomName string) {
+	rtcClient, err := rtc.Connect(ctx, s.cfg.LiveKitURL, s.cfg.LiveKitAPIKey, s.cfg.LiveKitAPISecret, roomName, "listener-web")
+	if err != nil {
+		sendJSON(conn, errorMsg{Type: "error", Msg: err.Error()})
+		sendJSON(conn, statusMsg{Type: "status", State: "idle"})
+		return
+	}
+	defer rtcClient.Close()
+
+	msgs := rtcClient.Messages()
+	for {
+		select {
+		case <-ctx.Done():
+			sendJSON(conn, statusMsg{Type: "status", State: "idle"}) //nolint:errcheck
+			return
+		case msg, ok := <-msgs:
+			if !ok {
+				sendJSON(conn, statusMsg{Type: "status", State: "idle"}) //nolint:errcheck
+				return
+			}
+			if msg.Type == "pair" {
+				if err := sendJSON(conn, pairMsg{
+					Type:   "pair",
+					Source: msg.Source,
+					Target: msg.Target,
+					Ts:     time.Now().UnixMilli(),
+				}); err != nil {
+					return
+				}
+			}
+		}
+	}
 }
 
 func sendJSON(conn *websocket.Conn, v any) error {
