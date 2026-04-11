@@ -22,10 +22,12 @@ func ReadAudioFile(path string) ([]byte, string, error) {
 		return data, "audio.wav", nil
 	case ".mp3":
 		return data, "audio.mp3", nil
+	case ".m4a":
+		return data, "audio.m4a", nil
 	case ".pcm":
 		return PCMToWAV(data, 16000, 1, 16), "audio.wav", nil
 	default:
-		return nil, "", fmt.Errorf("unsupported format %q; supported: .wav, .mp3, .pcm", ext)
+		return nil, "", fmt.Errorf("unsupported format %q; supported: .wav, .mp3, .m4a, .pcm", ext)
 	}
 }
 
