@@ -14,11 +14,13 @@ import (
 	"github.com/lucyliuu/mini-tmk-agent/internal/audio"
 	"github.com/lucyliuu/mini-tmk-agent/internal/pipeline"
 	"github.com/lucyliuu/mini-tmk-agent/internal/translate"
+	"github.com/lucyliuu/mini-tmk-agent/internal/tts"
 )
 
 var (
-	apiKeyFlag  string
-	baseURLFlag string
+	apiKeyFlag         string
+	baseURLFlag        string
+	deepgramAPIKeyFlag string
 )
 
 func main() {
@@ -34,11 +36,13 @@ Prerequisites:
   Linux: sudo apt install portaudio19-dev libportaudio2
 
 Environment:
-  OPENAI_API_KEY  (required) Your OpenAI API key`,
+  OPENAI_API_KEY   (required) Your OpenAI API key
+  DEEPGRAM_API_KEY (optional) Deepgram API key for streaming ASR`,
 	}
 
 	root.PersistentFlags().StringVar(&apiKeyFlag, "api-key", "", "OpenAI API key (overrides OPENAI_API_KEY env var)")
 	root.PersistentFlags().StringVar(&baseURLFlag, "base-url", "", "OpenAI API base URL (overrides OPENAI_BASE_URL env var)")
+	root.PersistentFlags().StringVar(&deepgramAPIKeyFlag, "deepgram-api-key", "", "Deepgram API key (overrides DEEPGRAM_API_KEY env var)")
 
 	root.AddCommand(newStreamCmd())
 	root.AddCommand(newTranscriptCmd())
@@ -55,18 +59,33 @@ func loadConfig() *config.Config {
 		fmt.Fprintln(os.Stderr, "Error:", err)
 		os.Exit(1)
 	}
-	cfg.Override(apiKeyFlag, baseURLFlag)
+	cfg.Override(apiKeyFlag, baseURLFlag, deepgramAPIKeyFlag)
 	return cfg
 }
 
 func newStreamCmd() *cobra.Command {
-	var sourceLang, targetLang string
+	var (
+		sourceLang     string
+		targetLang     string
+		enableTTS      bool
+		ttsVoice       string
+		ttsSpeakerMode bool
+	)
 
 	cmd := &cobra.Command{
 		Use:   "stream",
 		Short: "Real-time microphone translation to terminal",
-		Example: `  mini-tmk-agent stream --source-lang zh --target-lang en
-  mini-tmk-agent stream --source-lang en --target-lang ja`,
+		Example: `  # Basic streaming (Whisper batch, no Deepgram key)
+  mini-tmk-agent stream --source-lang zh --target-lang en
+
+  # Streaming ASR with Deepgram (low latency, interim results)
+  DEEPGRAM_API_KEY=dg-... mini-tmk-agent stream --source-lang zh --target-lang en
+
+  # With TTS output (requires headphones for full-duplex)
+  mini-tmk-agent stream --source-lang zh --target-lang en --tts
+
+  # TTS with speakers (half-duplex: mic pauses during playback)
+  mini-tmk-agent stream --source-lang zh --target-lang en --tts --tts-speaker-mode`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := loadConfig()
 
@@ -76,16 +95,42 @@ func newStreamCmd() *cobra.Command {
 			asrClient := asr.NewWhisperClient(cfg.APIKey, cfg.BaseURL)
 			translateClient := translate.NewOpenAIClient(cfg.APIKey, cfg.BaseURL)
 
-			return pipeline.RunStream(ctx, pipeline.StreamConfig{
+			streamCfg := pipeline.StreamConfig{
 				SourceLang: sourceLang,
 				TargetLang: targetLang,
 				VADConfig:  audio.DefaultVADConfig(),
-			}, asrClient, translateClient)
+			}
+
+			// Enable Deepgram streaming ASR when key is available
+			if cfg.DeepgramAPIKey != "" {
+				streamCfg.StreamASR = asr.NewDeepgramStreamClient(cfg.DeepgramAPIKey)
+				fmt.Println("Using Deepgram streaming ASR (low latency)")
+			} else {
+				fmt.Println("Using Whisper batch ASR (set DEEPGRAM_API_KEY for streaming)")
+			}
+
+			// Enable TTS when requested
+			if enableTTS {
+				streamCfg.EnableTTS = true
+				streamCfg.TTSSpeakerMode = ttsSpeakerMode
+				streamCfg.TTSClient = tts.NewOpenAIClient(cfg.APIKey, cfg.BaseURL, ttsVoice, "pcm")
+				streamCfg.TTSPlayer = tts.NewPlayer(true) // PortAudio already initialised by Capturer
+				if ttsSpeakerMode {
+					fmt.Println("TTS enabled (speaker mode: mic pauses during playback)")
+				} else {
+					fmt.Println("TTS enabled (use headphones for full-duplex)")
+				}
+			}
+
+			return pipeline.RunStream(ctx, streamCfg, asrClient, translateClient)
 		},
 	}
 
 	cmd.Flags().StringVar(&sourceLang, "source-lang", "zh", "Source language (zh|en|es|ja)")
 	cmd.Flags().StringVar(&targetLang, "target-lang", "en", "Target language (zh|en|es|ja)")
+	cmd.Flags().BoolVar(&enableTTS, "tts", false, "Enable TTS audio output for translations")
+	cmd.Flags().StringVar(&ttsVoice, "tts-voice", "alloy", "TTS voice (alloy|echo|fable|onyx|nova|shimmer)")
+	cmd.Flags().BoolVar(&ttsSpeakerMode, "tts-speaker-mode", false, "Pause mic during TTS playback (use with speakers, not headphones)")
 	return cmd
 }
 
@@ -115,6 +160,6 @@ func newTranscriptCmd() *cobra.Command {
 	_ = cmd.MarkFlagRequired("file")
 	_ = cmd.MarkFlagRequired("output")
 
-	log.SetFlags(0) // cleaner log output without timestamp prefix
+	log.SetFlags(0)
 	return cmd
 }

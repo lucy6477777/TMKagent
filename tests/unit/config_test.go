@@ -64,12 +64,15 @@ func TestOverride(t *testing.T) {
 	defer os.Unsetenv("OPENAI_API_KEY")
 
 	cfg, _ := config.Load()
-	cfg.Override("sk-new", "https://new.api/v1")
+	cfg.Override("sk-new", "https://new.api/v1", "dg-test")
 	if cfg.APIKey != "sk-new" {
 		t.Errorf("Override did not update APIKey")
 	}
 	if cfg.BaseURL != "https://new.api/v1" {
 		t.Errorf("Override did not update BaseURL")
+	}
+	if cfg.DeepgramAPIKey != "dg-test" {
+		t.Errorf("Override did not update DeepgramAPIKey")
 	}
 }
 
@@ -78,7 +81,7 @@ func TestOverride_EmptyDoesNotReplace(t *testing.T) {
 	defer os.Unsetenv("OPENAI_API_KEY")
 
 	cfg, _ := config.Load()
-	cfg.Override("", "")
+	cfg.Override("", "", "")
 	if cfg.APIKey != "sk-original" {
 		t.Errorf("Override with empty apiKey should not replace existing value")
 	}
