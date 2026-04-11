@@ -3,7 +3,6 @@ package tts
 import (
 	"encoding/binary"
 	"io"
-	"log"
 	"strings"
 	"sync/atomic"
 
@@ -92,7 +91,6 @@ func (p *Player) PlayStream(r io.Reader) error {
 			}
 			if werr := p.stream.Write(); werr != nil {
 				if isUnderrun(werr) {
-					log.Printf("[WARN] audio underrun (recovered)")
 					continue
 				}
 				return werr
