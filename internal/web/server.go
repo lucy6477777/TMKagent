@@ -54,13 +54,29 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/ws", s.handleWS)
 	mux.HandleFunc("/upload", s.handleUpload)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/" {
-			if _, err := fs.Stat(stripped, r.URL.Path[1:]); err == nil {
-				fileServer.ServeHTTP(w, r)
-				return
-			}
+		// Try to serve the exact file
+		path := r.URL.Path
+		if path == "/" {
+			path = "/index.html"
 		}
-		fileServer.ServeHTTP(w, r)
+		// Strip leading slash for fs.Stat
+		fsPath := path[1:]
+		if _, err := fs.Stat(stripped, fsPath); err == nil {
+			fileServer.ServeHTTP(w, r)
+			return
+		}
+		// SPA fallback: serve index.html
+		indexContent, err := fs.ReadFile(stripped, "index.html")
+		if err != nil {
+			// During development (no static files built yet), return 200 with placeholder
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("<!DOCTYPE html><html><body>Build frontend with 'make web-build'</body></html>"))
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		w.Write(indexContent)
 	})
 
 	return mux

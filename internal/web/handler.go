@@ -109,7 +109,10 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	r.ParseMultipartForm(50 << 20) // 50MB max
+	if err := r.ParseMultipartForm(50 << 20); err != nil {
+		http.Error(w, "invalid multipart request", http.StatusBadRequest)
+		return
+	}
 	file, header, err := r.FormFile("file")
 	if err != nil {
 		http.Error(w, "missing file field", http.StatusBadRequest)
@@ -224,15 +227,17 @@ func (s *Server) runStream(ctx context.Context, conn *websocket.Conn, sourceLang
 		} else {
 			target = text
 		}
-		sendJSON(conn, pairMsg{
+		if err := sendJSON(conn, pairMsg{
 			Type:   "pair",
 			Source: src,
 			Target: target,
 			Ts:     time.Now().UnixMilli(),
-		})
+		}); err != nil {
+			return
+		}
 	}
 
-	sendJSON(conn, statusMsg{Type: "status", State: "idle"})
+	sendJSON(conn, statusMsg{Type: "status", State: "idle"}) //nolint:errcheck
 }
 
 // runTranscript reads an audio file, transcribes it chunk-by-chunk with progress updates,
@@ -296,18 +301,23 @@ func (s *Server) runTranscript(ctx context.Context, conn *websocket.Conn, filePa
 			target = text
 		}
 
-		sendJSON(conn, pairMsg{
+		if err := sendJSON(conn, pairMsg{
 			Type:   "pair",
 			Source: src,
 			Target: target,
 			Ts:     time.Now().UnixMilli(),
-		})
+		}); err != nil {
+			return
+		}
 	}
 
-	sendJSON(conn, statusMsg{Type: "status", State: "idle"})
+	sendJSON(conn, statusMsg{Type: "status", State: "idle"}) //nolint:errcheck
 }
 
-func sendJSON(conn *websocket.Conn, v any) {
-	data, _ := json.Marshal(v)
-	conn.WriteMessage(websocket.TextMessage, data)
+func sendJSON(conn *websocket.Conn, v any) error {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	return conn.WriteMessage(websocket.TextMessage, data)
 }
