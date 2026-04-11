@@ -143,6 +143,7 @@ func runStreamingPipeline(
 // ---------- TTS worker ----------
 
 func runTTSWorker(ctx context.Context, client tts.Client, player *tts.Player, ch <-chan string) {
+	defer player.Stop()
 	for {
 		select {
 		case <-ctx.Done():
