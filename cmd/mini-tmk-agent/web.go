@@ -18,9 +18,13 @@ func newWebCmd() *cobra.Command {
 			cfg := loadConfig()
 
 			srv := web.NewServer(web.ServerConfig{
-				APIKey:  cfg.APIKey,
-				BaseURL: cfg.BaseURL,
-				Port:    port,
+				APIKey:           cfg.APIKey,
+				BaseURL:          cfg.BaseURL,
+				DeepgramAPIKey:   cfg.DeepgramAPIKey,
+				Port:             port,
+				LiveKitURL:       cfg.LiveKitURL,
+				LiveKitAPIKey:    cfg.LiveKitAPIKey,
+				LiveKitAPISecret: cfg.LiveKitAPISecret,
 			})
 
 			addr := fmt.Sprintf(":%d", port)

@@ -3,8 +3,10 @@ package web
 import (
 	"context"
 	"embed"
+	"encoding/json"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"sync"
 
@@ -25,9 +27,13 @@ type Server struct {
 
 // ServerConfig holds the parameters needed to create a Server.
 type ServerConfig struct {
-	APIKey  string
-	BaseURL string
-	Port    int
+	APIKey           string
+	BaseURL          string
+	DeepgramAPIKey   string
+	Port             int
+	LiveKitURL       string
+	LiveKitAPIKey    string
+	LiveKitAPISecret string
 }
 
 // NewServer creates a Server with the given config.
@@ -53,6 +59,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/assets/", fileServer.ServeHTTP)
 	mux.HandleFunc("/ws", s.handleWS)
 	mux.HandleFunc("/upload", s.handleUpload)
+	mux.HandleFunc("/api/info", s.handleInfo)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// Try to serve the exact file
 		path := r.URL.Path
@@ -80,6 +87,46 @@ func (s *Server) Handler() http.Handler {
 	})
 
 	return mux
+}
+
+// handleInfo returns the server's local IP and port as JSON.
+func (s *Server) handleInfo(w http.ResponseWriter, _ *http.Request) {
+	ip := localIP()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"ip": ip, "port": s.cfg.Port})
+}
+
+// localIP returns the first non-loopback IPv4 address found.
+func localIP() string {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return "localhost"
+	}
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			var ip net.IP
+			switch v := addr.(type) {
+			case *net.IPNet:
+				ip = v.IP
+			case *net.IPAddr:
+				ip = v.IP
+			}
+			if ip == nil || ip.IsLoopback() {
+				continue
+			}
+			if ip4 := ip.To4(); ip4 != nil {
+				return ip4.String()
+			}
+		}
+	}
+	return "localhost"
 }
 
 // cancelPipeline stops the current pipeline if one is running.

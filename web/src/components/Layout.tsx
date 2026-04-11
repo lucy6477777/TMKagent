@@ -1,8 +1,6 @@
 import type { PipelineState } from '../types/ws'
 import { Topbar } from './Topbar'
-import { Sidebar } from './Sidebar'
-
-type Page = 'stream' | 'transcript'
+import { Sidebar, type Page } from './Sidebar'
 
 interface Props {
   pipelineState: PipelineState
