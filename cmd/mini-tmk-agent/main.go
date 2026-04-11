@@ -11,7 +11,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/lucyliuu/mini-tmk-agent/config"
 	"github.com/lucyliuu/mini-tmk-agent/internal/asr"
-	"github.com/lucyliuu/mini-tmk-agent/internal/audio"
 	"github.com/lucyliuu/mini-tmk-agent/internal/pipeline"
 	"github.com/lucyliuu/mini-tmk-agent/internal/translate"
 	"github.com/lucyliuu/mini-tmk-agent/internal/tts"
@@ -37,7 +36,7 @@ Prerequisites:
 
 Environment:
   OPENAI_API_KEY   (required) Your OpenAI API key
-  DEEPGRAM_API_KEY (optional) Deepgram API key for streaming ASR`,
+  DEEPGRAM_API_KEY (required for stream) Deepgram API key for streaming ASR`,
 	}
 
 	root.PersistentFlags().StringVar(&apiKeyFlag, "api-key", "", "OpenAI API key (overrides OPENAI_API_KEY env var)")
@@ -75,11 +74,8 @@ func newStreamCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "stream",
 		Short: "Real-time microphone translation to terminal",
-		Example: `  # Basic streaming (Whisper batch, no Deepgram key)
+		Example: `  # Streaming translation (requires DEEPGRAM_API_KEY)
   mini-tmk-agent stream --source-lang zh --target-lang en
-
-  # Streaming ASR with Deepgram (low latency, interim results)
-  DEEPGRAM_API_KEY=dg-... mini-tmk-agent stream --source-lang zh --target-lang en
 
   # With TTS output (requires headphones for full-duplex)
   mini-tmk-agent stream --source-lang zh --target-lang en --tts
@@ -89,32 +85,31 @@ func newStreamCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := loadConfig()
 
+			if cfg.DeepgramAPIKey == "" {
+				return fmt.Errorf(
+					"DEEPGRAM_API_KEY is required for stream mode\n" +
+						"  Sign up at https://console.deepgram.com ($200 free credits)\n" +
+						"  Run: export DEEPGRAM_API_KEY=dg-...\n" +
+						"  Or:  mini-tmk-agent --deepgram-api-key dg-...",
+				)
+			}
+
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
 
-			asrClient := asr.NewWhisperClient(cfg.APIKey, cfg.BaseURL)
 			translateClient := translate.NewOpenAIClient(cfg.APIKey, cfg.BaseURL)
 
 			streamCfg := pipeline.StreamConfig{
 				SourceLang: sourceLang,
 				TargetLang: targetLang,
-				VADConfig:  audio.DefaultVADConfig(),
+				StreamASR:  asr.NewDeepgramStreamClient(cfg.DeepgramAPIKey),
 			}
 
-			// Enable Deepgram streaming ASR when key is available
-			if cfg.DeepgramAPIKey != "" {
-				streamCfg.StreamASR = asr.NewDeepgramStreamClient(cfg.DeepgramAPIKey)
-				fmt.Println("Using Deepgram streaming ASR (low latency)")
-			} else {
-				fmt.Println("Using Whisper batch ASR (set DEEPGRAM_API_KEY for streaming)")
-			}
-
-			// Enable TTS when requested
 			if enableTTS {
 				streamCfg.EnableTTS = true
 				streamCfg.TTSSpeakerMode = ttsSpeakerMode
 				streamCfg.TTSClient = tts.NewOpenAIClient(cfg.APIKey, cfg.BaseURL, ttsVoice, "pcm")
-				streamCfg.TTSPlayer = tts.NewPlayer(true) // PortAudio already initialised by Capturer
+				streamCfg.TTSPlayer = tts.NewPlayer(true)
 				if ttsSpeakerMode {
 					fmt.Println("TTS enabled (speaker mode: mic pauses during playback)")
 				} else {
@@ -122,7 +117,7 @@ func newStreamCmd() *cobra.Command {
 				}
 			}
 
-			return pipeline.RunStream(ctx, streamCfg, asrClient, translateClient)
+			return pipeline.RunStream(ctx, streamCfg, translateClient)
 		},
 	}
 

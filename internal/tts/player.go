@@ -1,6 +1,7 @@
 package tts
 
 import (
+	"bytes"
 	"encoding/binary"
 	"io"
 	"sync/atomic"
@@ -11,7 +12,7 @@ import (
 const (
 	playerSampleRate = 24000 // OpenAI TTS PCM output is 24kHz
 	playerChannels   = 1
-	playerFrameSize  = 1024
+	playerFrameSize  = 2048 // larger frame = more resilient to scheduling jitter
 )
 
 // Player plays PCM audio through PortAudio speakers.
@@ -34,9 +35,20 @@ func (p *Player) IsPlaying() bool {
 	return p.playing.Load()
 }
 
-// PlayStream reads PCM 24kHz/16-bit/mono from r and plays through speakers.
-// Blocks until all audio has been played or an error occurs.
+// PlayStream reads ALL PCM data from r into memory first, then plays through
+// speakers in one shot. This avoids ALSA underruns caused by network I/O
+// stalls when streaming from the TTS API.
 func (p *Player) PlayStream(r io.Reader) error {
+	// Buffer entire audio into memory to decouple network I/O from playback
+	var audioBuf bytes.Buffer
+	if _, err := io.Copy(&audioBuf, r); err != nil {
+		return err
+	}
+	pcmData := audioBuf.Bytes()
+	if len(pcmData) < 2 {
+		return nil
+	}
+
 	if !p.initDone {
 		if err := portaudio.Initialize(); err != nil {
 			return err
@@ -59,27 +71,23 @@ func (p *Player) PlayStream(r io.Reader) error {
 	p.playing.Store(true)
 	defer p.playing.Store(false)
 
-	readBuf := make([]byte, playerFrameSize*2) // 2 bytes per int16
-	for {
-		n, err := io.ReadFull(r, readBuf)
-		if n > 0 {
-			samples := n / 2
-			for i := 0; i < samples; i++ {
-				buf[i] = int16(binary.LittleEndian.Uint16(readBuf[i*2 : i*2+2]))
-			}
-			// Zero-pad the remaining buffer if partial read
-			for i := samples; i < playerFrameSize; i++ {
-				buf[i] = 0
-			}
-			if werr := stream.Write(); werr != nil {
-				return werr
-			}
+	totalSamples := len(pcmData) / 2
+	for offset := 0; offset < totalSamples; offset += playerFrameSize {
+		end := offset + playerFrameSize
+		if end > totalSamples {
+			end = totalSamples
 		}
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
-			return nil
+		// Decode int16 LE samples
+		for i := offset; i < end; i++ {
+			buf[i-offset] = int16(binary.LittleEndian.Uint16(pcmData[i*2 : i*2+2]))
 		}
-		if err != nil {
+		// Zero-pad if last chunk is partial
+		for i := end - offset; i < playerFrameSize; i++ {
+			buf[i] = 0
+		}
+		if err := stream.Write(); err != nil {
 			return err
 		}
 	}
+	return nil
 }

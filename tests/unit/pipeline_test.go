@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lucyliuu/mini-tmk-agent/internal/audio"
 	"github.com/lucyliuu/mini-tmk-agent/internal/pipeline"
 )
 
@@ -64,16 +63,18 @@ func (m *mockTranslate) Translate(_ context.Context, _ string, _, _ string) (str
 	return "", m.response, m.err
 }
 
-func TestStreamConfig_DefaultVADConfig(t *testing.T) {
+func TestStreamConfig_Fields(t *testing.T) {
 	cfg := pipeline.StreamConfig{
 		SourceLang: "zh",
 		TargetLang: "en",
-		VADConfig:  audio.DefaultVADConfig(),
 	}
 	if cfg.SourceLang != "zh" {
 		t.Error("source lang not set")
 	}
-	if cfg.VADConfig.SampleRate != 16000 {
-		t.Error("VAD sample rate should default to 16000")
+	if cfg.TargetLang != "en" {
+		t.Error("target lang not set")
+	}
+	if cfg.EnableTTS {
+		t.Error("TTS should be disabled by default")
 	}
 }
