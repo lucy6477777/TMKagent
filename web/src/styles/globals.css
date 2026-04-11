@@ -43,3 +43,14 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+@media (prefers-reduced-motion: no-preference) {
+  .status-pulse {
+    animation: status-pulse 2s ease-in-out infinite;
+  }
+}
+
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.5; transform: scale(1.3); }
+}
