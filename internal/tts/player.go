@@ -24,10 +24,11 @@ type Player struct {
 	initDone bool
 }
 
-// NewPlayer creates a Player. skipInit should be true when PortAudio is
-// already initialised by the audio Capturer (the typical stream-mode case).
-func NewPlayer(skipInit bool) *Player {
-	return &Player{initDone: !skipInit}
+// NewPlayer creates a Player. portaudioReady should be true when PortAudio
+// is already initialised by the audio Capturer (the typical speaker/solo case).
+// When false (listener mode), the Player will call portaudio.Initialize() itself.
+func NewPlayer(portaudioReady bool) *Player {
+	return &Player{initDone: portaudioReady}
 }
 
 // IsPlaying returns true while audio is being played back.
