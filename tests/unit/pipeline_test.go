@@ -60,8 +60,8 @@ type mockTranslate struct {
 	err      error
 }
 
-func (m *mockTranslate) Translate(_ context.Context, _ string, _, _ string) (string, error) {
-	return m.response, m.err
+func (m *mockTranslate) Translate(_ context.Context, _ string, _, _ string) (string, string, error) {
+	return "", m.response, m.err
 }
 
 func TestStreamConfig_DefaultVADConfig(t *testing.T) {

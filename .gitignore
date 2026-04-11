@@ -1,3 +1,15 @@
 bin/
 *.test
 *.out
+*.log
+
+# Local editor / agent settings
+.claude/
+.codex
+
+# Common local env files
+.env
+.env.*
+
+# OS/editor noise
+.DS_Store

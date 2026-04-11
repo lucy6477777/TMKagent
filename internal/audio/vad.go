@@ -17,10 +17,10 @@ type VADConfig struct {
 // DefaultVADConfig returns production-ready defaults for a quiet microphone environment.
 func DefaultVADConfig() VADConfig {
 	return VADConfig{
-		SilenceThreshold:  500.0,
-		SilenceDuration:   800 * time.Millisecond,
-		MinSpeechDuration: 300 * time.Millisecond,
-		MaxChunkDuration:  30 * time.Second,
+		SilenceThreshold:  800.0,
+		SilenceDuration:   400 * time.Millisecond,
+		MinSpeechDuration: 200 * time.Millisecond,
+		MaxChunkDuration:  8 * time.Second,
 		SampleRate:        16000,
 	}
 }

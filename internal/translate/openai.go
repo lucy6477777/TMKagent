@@ -3,13 +3,16 @@ package translate
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	openai "github.com/sashabaranov/go-openai"
 )
 
 // Client is the interface for text translation.
+// Returns (normalizedSource, translation, error).
+// normalizedSource is non-empty only when the source was normalized (e.g. trad→simp for zh).
 type Client interface {
-	Translate(ctx context.Context, text, fromLang, toLang string) (string, error)
+	Translate(ctx context.Context, text, fromLang, toLang string) (string, string, error)
 }
 
 // OpenAIClient implements Client using GPT-4o-mini.
@@ -26,15 +29,30 @@ func NewOpenAIClient(apiKey, baseURL string) *OpenAIClient {
 	return &OpenAIClient{client: openai.NewClientWithConfig(cfg)}
 }
 
-// Translate translates text from fromLang to toLang using GPT-4o-mini.
-// fromLang and toLang are language codes (e.g. "zh", "en", "es", "ja").
-func (o *OpenAIClient) Translate(ctx context.Context, text, fromLang, toLang string) (string, error) {
-	systemPrompt := fmt.Sprintf(
-		"You are a professional simultaneous interpreter. "+
-			"Translate the following %s text into %s. "+
-			"Output only the translation, no explanation.",
-		fromLang, toLang,
-	)
+// Translate translates text from fromLang to toLang.
+// For zh source: returns (simplifiedSource, translation, error) — GPT normalises trad→simp in one call.
+// For other languages: returns ("", translation, error).
+func (o *OpenAIClient) Translate(ctx context.Context, text, fromLang, toLang string) (string, string, error) {
+	var systemPrompt string
+	twoLines := fromLang == "zh"
+
+	if twoLines {
+		systemPrompt = fmt.Sprintf(
+			"You are a professional simultaneous interpreter.\n"+
+				"Output exactly two lines with no labels:\n"+
+				"Line 1: the input converted to Simplified Chinese (if already simplified, copy as-is)\n"+
+				"Line 2: the translation into %s",
+			toLang,
+		)
+	} else {
+		systemPrompt = fmt.Sprintf(
+			"You are a professional simultaneous interpreter. "+
+				"Translate the following %s text into %s. "+
+				"Output only the translation, no explanation.",
+			fromLang, toLang,
+		)
+	}
+
 	resp, err := o.client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
 		Model: "gpt-4o-mini",
 		Messages: []openai.ChatCompletionMessage{
@@ -43,10 +61,22 @@ func (o *OpenAIClient) Translate(ctx context.Context, text, fromLang, toLang str
 		},
 	})
 	if err != nil {
-		return "", fmt.Errorf("translation: %w", err)
+		return "", "", fmt.Errorf("translation: %w", err)
 	}
 	if len(resp.Choices) == 0 {
-		return "", fmt.Errorf("translation: empty response")
+		return "", "", fmt.Errorf("translation: empty response")
 	}
-	return resp.Choices[0].Message.Content, nil
+
+	content := strings.TrimSpace(resp.Choices[0].Message.Content)
+
+	if twoLines {
+		parts := strings.SplitN(content, "\n", 2)
+		if len(parts) == 2 {
+			return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]), nil
+		}
+		// GPT didn't follow two-line format — fall back: use original text as source
+		return "", content, nil
+	}
+
+	return "", content, nil
 }
