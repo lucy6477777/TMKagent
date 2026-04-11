@@ -37,21 +37,21 @@ The binary is created at `bin/mini-tmk-agent`.
 ## Configure
 
 ```bash
-export OPENAI_API_KEY=sk-...
-
-# Optional: Deepgram key enables streaming ASR with interim results (~200ms latency)
-# Sign up at https://console.deepgram.com ($200 free credits, no credit card)
-export DEEPGRAM_API_KEY=dg-...
-
-# Optional: override API endpoint (e.g. for a proxy)
-export OPENAI_BASE_URL=https://api.openai.com/v1
-
-# Optional: LiveKit for cross-device RTC relay
-# Sign up at https://cloud.livekit.io (free tier, no credit card)
-export LIVEKIT_URL=wss://your-project.livekit.cloud
-export LIVEKIT_API_KEY=APIxxxxx
-export LIVEKIT_API_SECRET=xxxxx
+cp .env.example .env
+# Edit .env and fill in your API keys
 ```
+
+The program automatically loads `.env` on startup — no need to `export` manually. Open `.env` and fill in:
+
+| Variable | Required? | Where to get it |
+|----------|-----------|-----------------|
+| `OPENAI_API_KEY` | Yes | [platform.openai.com](https://platform.openai.com/api-keys) |
+| `DEEPGRAM_API_KEY` | Yes (stream mode) | [console.deepgram.com](https://console.deepgram.com) — $200 free, no credit card |
+| `LIVEKIT_URL` | Optional (RTC) | [cloud.livekit.io](https://cloud.livekit.io) — free tier, no credit card |
+| `LIVEKIT_API_KEY` | Optional (RTC) | Same as above |
+| `LIVEKIT_API_SECRET` | Optional (RTC) | Same as above |
+
+> **Note:** `.env` is git-ignored. Your keys stay local and never get pushed to GitHub.
 
 ---
 
