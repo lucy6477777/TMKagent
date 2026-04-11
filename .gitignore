@@ -13,3 +13,6 @@ bin/
 
 # OS/editor noise
 .DS_Store
+
+# Git worktrees
+.worktrees/
