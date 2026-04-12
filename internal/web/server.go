@@ -218,11 +218,6 @@ func (s *Server) stopPipeline(conn *websocket.Conn) {
 	}
 }
 
-// stopPipelineForConn stops the active pipeline only if it belongs to conn.
-func (s *Server) stopPipelineForConn(conn *websocket.Conn) {
-	s.stopPipeline(conn)
-}
-
 // isActivePipeline reports whether pipelineID is still the current pipeline for conn.
 func (s *Server) isActivePipeline(conn *websocket.Conn, pipelineID uint64) bool {
 	s.mu.Lock()
@@ -244,11 +239,5 @@ func (s *Server) sendPipelineJSON(pipelineID uint64, conn *websocket.Conn, v any
 	if !s.isActivePipeline(conn, pipelineID) {
 		return errStalePipeline
 	}
-	if err := sendJSON(conn, v); err != nil {
-		return err
-	}
-	if !s.isActivePipeline(conn, pipelineID) {
-		return errStalePipeline
-	}
-	return nil
+	return sendJSON(conn, v)
 }

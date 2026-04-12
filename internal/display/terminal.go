@@ -58,8 +58,3 @@ func (w *Writer) PrintFinal(p Pair) {
 	fmt.Fprintf(w.out, "%s[TGT]%s %s\n\n", colorGreen, colorReset, p.Target)
 }
 
-// Print writes a Pair to stdout with ANSI colours (legacy API, used by old pipeline).
-func Print(p Pair) {
-	fmt.Printf("%s[SRC]%s %s\n", colorYellow, colorReset, p.Source)
-	fmt.Printf("%s[TGT]%s %s\n\n", colorGreen, colorReset, p.Target)
-}

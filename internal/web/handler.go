@@ -82,7 +82,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() {
-		s.stopPipelineForConn(conn)
+		s.stopPipeline(conn)
 		conn.Close()
 	}()
 
@@ -214,8 +214,7 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 // Interim results are sent as interimMsg; final results are translated and sent as pairMsg.
 func (s *Server) runStream(ctx context.Context, pipelineID uint64, conn *websocket.Conn, sourceLang, targetLang string) {
 	if s.cfg.DeepgramAPIKey == "" {
-		_ = s.sendPipelineJSON(pipelineID, conn, errorMsg{Type: "error", Msg: "DEEPGRAM_API_KEY not set"})
-		_ = s.sendPipelineJSON(pipelineID, conn, statusMsg{Type: "status", State: "idle"})
+		s.failPipeline(pipelineID, conn, "DEEPGRAM_API_KEY not set")
 		return
 	}
 
@@ -224,21 +223,18 @@ func (s *Server) runStream(ctx context.Context, pipelineID uint64, conn *websock
 
 	session, err := streamClient.Connect(ctx, sourceLang)
 	if err != nil {
-		_ = s.sendPipelineJSON(pipelineID, conn, errorMsg{Type: "error", Msg: err.Error()})
-		_ = s.sendPipelineJSON(pipelineID, conn, statusMsg{Type: "status", State: "idle"})
+		s.failPipeline(pipelineID, conn, err.Error())
 		return
 	}
 	defer session.Close()
 
 	capturer, frameCh, err := audio.NewCapturer()
 	if err != nil {
-		_ = s.sendPipelineJSON(pipelineID, conn, errorMsg{Type: "error", Msg: err.Error()})
-		_ = s.sendPipelineJSON(pipelineID, conn, statusMsg{Type: "status", State: "idle"})
+		s.failPipeline(pipelineID, conn, err.Error())
 		return
 	}
 	if err := capturer.Start(); err != nil {
-		_ = s.sendPipelineJSON(pipelineID, conn, errorMsg{Type: "error", Msg: err.Error()})
-		_ = s.sendPipelineJSON(pipelineID, conn, statusMsg{Type: "status", State: "idle"})
+		s.failPipeline(pipelineID, conn, err.Error())
 		return
 	}
 	defer capturer.Stop()
@@ -303,8 +299,7 @@ func (s *Server) runTranscript(ctx context.Context, pipelineID uint64, conn *web
 
 	audioBytes, filename, err := audio.ReadAudioFile(filePath)
 	if err != nil {
-		_ = s.sendPipelineJSON(pipelineID, conn, errorMsg{Type: "error", Msg: err.Error()})
-		_ = s.sendPipelineJSON(pipelineID, conn, statusMsg{Type: "status", State: "idle"})
+		s.failPipeline(pipelineID, conn, err.Error())
 		return
 	}
 
@@ -367,8 +362,7 @@ func (s *Server) runRTCSpeaker(ctx context.Context, pipelineID uint64, conn *web
 	identity := fmt.Sprintf("speaker-web-%d", pipelineID)
 	rtcClient, err := rtc.Connect(ctx, s.cfg.LiveKitURL, s.cfg.LiveKitAPIKey, s.cfg.LiveKitAPISecret, roomName, identity)
 	if err != nil {
-		_ = s.sendPipelineJSON(pipelineID, conn, errorMsg{Type: "error", Msg: err.Error()})
-		_ = s.sendPipelineJSON(pipelineID, conn, statusMsg{Type: "status", State: "idle"})
+		s.failPipeline(pipelineID, conn, err.Error())
 		return
 	}
 	defer rtcClient.Close()
@@ -378,21 +372,18 @@ func (s *Server) runRTCSpeaker(ctx context.Context, pipelineID uint64, conn *web
 
 	session, err := streamClient.Connect(ctx, sourceLang)
 	if err != nil {
-		_ = s.sendPipelineJSON(pipelineID, conn, errorMsg{Type: "error", Msg: err.Error()})
-		_ = s.sendPipelineJSON(pipelineID, conn, statusMsg{Type: "status", State: "idle"})
+		s.failPipeline(pipelineID, conn, err.Error())
 		return
 	}
 	defer session.Close()
 
 	capturer, frameCh, err := audio.NewCapturer()
 	if err != nil {
-		_ = s.sendPipelineJSON(pipelineID, conn, errorMsg{Type: "error", Msg: err.Error()})
-		_ = s.sendPipelineJSON(pipelineID, conn, statusMsg{Type: "status", State: "idle"})
+		s.failPipeline(pipelineID, conn, err.Error())
 		return
 	}
 	if err := capturer.Start(); err != nil {
-		_ = s.sendPipelineJSON(pipelineID, conn, errorMsg{Type: "error", Msg: err.Error()})
-		_ = s.sendPipelineJSON(pipelineID, conn, statusMsg{Type: "status", State: "idle"})
+		s.failPipeline(pipelineID, conn, err.Error())
 		return
 	}
 	defer capturer.Stop()
@@ -452,8 +443,7 @@ func (s *Server) runRTCListener(ctx context.Context, pipelineID uint64, conn *we
 	identity := fmt.Sprintf("listener-web-%d", pipelineID)
 	rtcClient, err := rtc.Connect(ctx, s.cfg.LiveKitURL, s.cfg.LiveKitAPIKey, s.cfg.LiveKitAPISecret, roomName, identity)
 	if err != nil {
-		_ = s.sendPipelineJSON(pipelineID, conn, errorMsg{Type: "error", Msg: err.Error()})
-		_ = s.sendPipelineJSON(pipelineID, conn, statusMsg{Type: "status", State: "idle"})
+		s.failPipeline(pipelineID, conn, err.Error())
 		return
 	}
 	defer rtcClient.Close()
@@ -469,15 +459,12 @@ func (s *Server) runRTCListener(ctx context.Context, pipelineID uint64, conn *we
 				_ = s.sendPipelineJSON(pipelineID, conn, statusMsg{Type: "status", State: "idle"})
 				return
 			}
-			if msg.Type == "interim" {
-				if err := s.sendPipelineJSON(pipelineID, conn, interimMsg{
-					Type: "interim",
-					Text: msg.Text,
-				}); err != nil {
+			switch msg.Type {
+			case "interim":
+				if err := s.sendPipelineJSON(pipelineID, conn, interimMsg{Type: "interim", Text: msg.Text}); err != nil {
 					return
 				}
-			}
-			if msg.Type == "pair" {
+			case "pair":
 				if err := s.sendPipelineJSON(pipelineID, conn, pairMsg{
 					Type:   "pair",
 					Source: msg.Source,
@@ -497,4 +484,10 @@ func sendJSON(conn *websocket.Conn, v any) error {
 		return err
 	}
 	return conn.WriteMessage(websocket.TextMessage, data)
+}
+
+// failPipeline sends an error message and transitions the pipeline to idle.
+func (s *Server) failPipeline(pipelineID uint64, conn *websocket.Conn, msg string) {
+	_ = s.sendPipelineJSON(pipelineID, conn, errorMsg{Type: "error", Msg: msg})
+	_ = s.sendPipelineJSON(pipelineID, conn, statusMsg{Type: "status", State: "idle"})
 }
