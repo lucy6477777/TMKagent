@@ -8,6 +8,15 @@ Powered by OpenAI Whisper-1 (ASR) / Deepgram Nova-2 (streaming ASR), GPT-4o-mini
 
 ## Prerequisites
 
+You need:
+
+- **Go 1.21+**
+- **Node.js + npm** for `make build` and the embedded Web UI bundle
+- **PortAudio** for microphone capture and TTS playback
+- **OPENAI_API_KEY** for all modes
+- **DEEPGRAM_API_KEY** for real-time stream mode
+- **`LIVEKIT_URL` / `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET`** only for RTC relay
+
 **macOS:**
 ```bash
 brew install portaudio
@@ -18,11 +27,13 @@ brew install portaudio
 sudo apt install portaudio19-dev libportaudio2
 ```
 
-**Go 1.21+** and an **OpenAI API key** are required. A **Deepgram API key** is required for stream mode. A **LiveKit Cloud** account is optional (for cross-device RTC relay).
+If you only want file transcription, `OPENAI_API_KEY` is enough.
 
 ---
 
-## Install
+## Quick Start
+
+1. Clone and build:
 
 ```bash
 git clone https://github.com/lucyliuu/mini-tmk-agent
@@ -30,7 +41,32 @@ cd mini-tmk-agent
 make build
 ```
 
-The binary is created at `bin/mini-tmk-agent`.
+2. Create `.env`:
+
+```bash
+cp .env.example .env
+```
+
+3. Fill in at least:
+
+```bash
+OPENAI_API_KEY=sk-...
+```
+
+4. Smoke test with the included sample audio:
+
+```bash
+./bin/mini-tmk-agent transcript --file testdata/hello_zh.wav --output result.txt --source-lang zh
+cat result.txt
+```
+
+If that works, your local setup is good.
+
+---
+
+## Build Output
+
+After `make build`, the binary is created at `bin/mini-tmk-agent`.
 
 ---
 
@@ -43,13 +79,15 @@ cp .env.example .env
 
 The program automatically loads `.env` on startup — no need to `export` manually. Open `.env` and fill in:
 
-| Variable | Required? | Where to get it |
-|----------|-----------|-----------------|
-| `OPENAI_API_KEY` | Yes | [platform.openai.com](https://platform.openai.com/api-keys) |
-| `DEEPGRAM_API_KEY` | Yes (stream mode) | [console.deepgram.com](https://console.deepgram.com) — $200 free, no credit card |
-| `LIVEKIT_URL` | Optional (RTC) | [cloud.livekit.io](https://cloud.livekit.io) — free tier, no credit card |
-| `LIVEKIT_API_KEY` | Optional (RTC) | Same as above |
-| `LIVEKIT_API_SECRET` | Optional (RTC) | Same as above |
+| Variable | Required? | Used by | Where to get it |
+|----------|-----------|---------|-----------------|
+| `OPENAI_API_KEY` | Yes | transcript / web / translation / TTS | [platform.openai.com](https://platform.openai.com/api-keys) |
+| `DEEPGRAM_API_KEY` | Yes for real-time stream | CLI `stream`, Web realtime pages | [console.deepgram.com](https://console.deepgram.com) |
+| `LIVEKIT_URL` | Optional | RTC relay only | [cloud.livekit.io](https://cloud.livekit.io) |
+| `LIVEKIT_API_KEY` | Optional | RTC relay only | Same as above |
+| `LIVEKIT_API_SECRET` | Optional | RTC relay only | Same as above |
+| `OPENAI_BASE_URL` | Optional | Custom proxy / compatible endpoint | Your provider |
+| `WEB_PUBLIC_BASE_URL` | Optional | Web QR code / phone access | Your own public URL |
 
 > **Note:** `.env` is git-ignored. Your keys stay local and never get pushed to GitHub.
 
@@ -61,12 +99,19 @@ The program automatically loads `.env` on startup — no need to `export` manual
 
 Speak into your microphone. The terminal displays source and translated text simultaneously.
 
+This mode requires:
+
+- `OPENAI_API_KEY`
+- `DEEPGRAM_API_KEY`
+- a working microphone
+- PortAudio installed
+
 ```bash
-# Basic (Whisper batch ASR — higher latency)
+# Basic real-time translation
 ./bin/mini-tmk-agent stream --source-lang zh --target-lang en
 
-# With Deepgram streaming ASR (low latency, words appear as you speak)
-DEEPGRAM_API_KEY=dg-... ./bin/mini-tmk-agent stream --source-lang zh --target-lang en
+# If you prefer CLI flags over .env
+./bin/mini-tmk-agent --deepgram-api-key dg-... stream --source-lang zh --target-lang en
 ```
 
 Output example:
@@ -111,17 +156,40 @@ Press `Ctrl+C` to stop.
 
 ### Transcript Mode — Transcribe an audio file
 
+This mode requires only:
+
+- `OPENAI_API_KEY`
+
 ```bash
 ./bin/mini-tmk-agent transcript --file speech.mp3 --output result.txt
+./bin/mini-tmk-agent transcript --file speech.m4a --output result.txt
 ./bin/mini-tmk-agent transcript --file audio.pcm --output result.txt --source-lang zh
 ```
 
-**Supported input formats:** `.wav` · `.mp3` · `.pcm`
+**Supported input formats:** `.wav` · `.mp3` · `.m4a` · `.pcm`
 
 ### Web UI
 
 ```bash
 ./bin/mini-tmk-agent web --port 8080
+```
+
+Then open:
+
+```text
+http://localhost:8080
+```
+
+What works in the Web UI:
+
+- `文件转录`: requires `OPENAI_API_KEY`
+- `实时翻译`: requires `OPENAI_API_KEY` + `DEEPGRAM_API_KEY`
+- `RTC`: requires `OPENAI_API_KEY` + `DEEPGRAM_API_KEY` + LiveKit credentials
+
+If you want to open the RTC listener page from your phone, set:
+
+```bash
+WEB_PUBLIC_BASE_URL=http://YOUR_LAN_IP:8080
 ```
 
 ### Global flags
@@ -140,8 +208,51 @@ Press `Ctrl+C` to stop.
 # Unit tests — no API key required
 make test
 
+# Coverage report
+make test-cover
+
 # Integration tests — requires OPENAI_API_KEY
 OPENAI_API_KEY=sk-... make test-integration
+```
+
+---
+
+## Troubleshooting
+
+### `OPENAI_API_KEY is not set`
+
+Create `.env` from `.env.example`, then put your real key in:
+
+```bash
+cp .env.example .env
+```
+
+### `DEEPGRAM_API_KEY is required for stream mode`
+
+This is expected for real-time translation. Transcript mode does not need Deepgram.
+
+### PortAudio errors
+
+Install PortAudio first:
+
+```bash
+# macOS
+brew install portaudio
+
+# Ubuntu / Debian
+sudo apt install portaudio19-dev libportaudio2
+```
+
+### `make build` fails before Go compilation
+
+`make build` also builds the React frontend, so Node.js and npm must be installed.
+
+### Web UI shows a placeholder page instead of the app
+
+Rebuild the embedded frontend assets:
+
+```bash
+make web-build
 ```
 
 ---
@@ -155,14 +266,8 @@ Stream mode (Deepgram streaming ASR):
     final results → GPT-4o-mini translate → terminal display
                                           → TTS goroutine → PortAudio playback
 
-Stream mode (Whisper batch ASR, fallback):
-  mic → portaudio → VAD (RMS energy) → audioCh
-  audioCh → Whisper-1 ASR → asrCh
-  asrCh → GPT-4o-mini translate → translateCh
-  translateCh → terminal display → TTS goroutine → PortAudio playback
-
 Transcript mode:
-  audio file (.wav/.mp3/.pcm) → Whisper-1 ASR → .txt output
+  audio file (.wav/.mp3/.m4a/.pcm) → Whisper-1 ASR → .txt output
 ```
 
 **Streaming ASR (Deepgram):** Audio frames are streamed to Deepgram via WebSocket in real-time. The server handles VAD and endpointing, returning interim results (words appear as you speak) and final results (complete utterance). This reduces perceived latency from ~4s to ~200ms.
@@ -187,7 +292,7 @@ config/config.go              API key + base URL loading (OpenAI + Deepgram)
 internal/audio/
   capture.go                  PortAudio microphone capture (16kHz mono)
   vad.go                      RMS energy VAD state machine
-  file.go                     WAV/MP3/PCM file reading + PCMToWAV
+  file.go                     WAV/MP3/M4A/PCM file reading + PCMToWAV
 internal/asr/
   whisper.go                  Whisper-1 batch ASR client (Client interface)
   deepgram.go                 Deepgram streaming ASR (StreamClient/StreamSession)
@@ -198,7 +303,7 @@ internal/tts/
 internal/rtc/
   livekit.go                  LiveKit RTC client (connect, send, receive via Data Channel)
 internal/pipeline/
-  stream.go                   Streaming + batch real-time pipelines with TTS
+  stream.go                   Streaming real-time pipelines with TTS
   transcript.go               Sequential file transcription
   metrics.go                  JSONL latency/cost metrics
 internal/display/terminal.go  ANSI terminal: interim (overwrite) + final display
@@ -213,4 +318,9 @@ testdata/hello_zh.wav         Test audio fixture
 
 ## Design
 
-See [`docs/superpowers/specs/`](docs/superpowers/specs/) for the full architecture design document.
+Project docs:
+
+- [docs/usage.md](docs/usage.md) — installation, configuration, CLI and Web UI walkthrough
+- [docs/architecture.md](docs/architecture.md) — system design, component boundaries, runtime flows
+- [docs/testing.md](docs/testing.md) — test strategy, coverage workflow, how to add tests
+- [`docs/superpowers/specs/`](docs/superpowers/specs/) — implementation-era design notes and UI specs

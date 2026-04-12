@@ -12,6 +12,7 @@ type Config struct {
 	APIKey         string
 	BaseURL        string
 	DeepgramAPIKey string
+	PublicBaseURL  string
 
 	LiveKitURL       string
 	LiveKitAPIKey    string
@@ -40,6 +41,7 @@ func Load() (*Config, error) {
 		APIKey:           apiKey,
 		BaseURL:          baseURL,
 		DeepgramAPIKey:   os.Getenv("DEEPGRAM_API_KEY"),
+		PublicBaseURL:    os.Getenv("WEB_PUBLIC_BASE_URL"),
 		LiveKitURL:       os.Getenv("LIVEKIT_URL"),
 		LiveKitAPIKey:    os.Getenv("LIVEKIT_API_KEY"),
 		LiveKitAPISecret: os.Getenv("LIVEKIT_API_SECRET"),

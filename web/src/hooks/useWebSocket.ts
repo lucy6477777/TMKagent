@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PipelineState, SubtitlePair, WSCommand, WSMessage } from '../types/ws'
 
-type ConnectionStatus = 'connecting' | 'connected' | 'disconnected'
+export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected'
 
 interface UseWebSocketReturn {
   status: ConnectionStatus
@@ -37,11 +37,14 @@ export function useWebSocket(url: string): UseWebSocketReturn {
     wsRef.current = ws
 
     ws.onopen = () => {
+      if (wsRef.current !== ws) return
       retriesRef.current = 0
       setStatus('connected')
     }
 
     ws.onmessage = (event) => {
+      if (wsRef.current !== ws) return
+
       let msg: WSMessage
       try {
         msg = JSON.parse(event.data as string)
@@ -80,7 +83,7 @@ export function useWebSocket(url: string): UseWebSocketReturn {
     }
 
     ws.onclose = () => {
-      if (unmountedRef.current) return
+      if (wsRef.current !== ws || unmountedRef.current) return
       setStatus('disconnected')
       setPipelineState('idle')
       // Exponential backoff retry
@@ -92,6 +95,7 @@ export function useWebSocket(url: string): UseWebSocketReturn {
     }
 
     ws.onerror = () => {
+      if (wsRef.current !== ws) return
       ws.close()
     }
   }, [url])
@@ -102,7 +106,10 @@ export function useWebSocket(url: string): UseWebSocketReturn {
     return () => {
       unmountedRef.current = true
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current)
-      wsRef.current?.close()
+      if (wsRef.current) {
+        wsRef.current.close()
+        wsRef.current = null
+      }
     }
   }, [connect])
 

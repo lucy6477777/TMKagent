@@ -10,6 +10,19 @@ const LANGUAGES = [
   { value: 'ja', label: '日本語' },
 ]
 
+function getSpeechLang(lang: string): string {
+  switch (lang) {
+    case 'zh':
+      return 'zh-CN'
+    case 'ja':
+      return 'ja-JP'
+    case 'es':
+      return 'es-ES'
+    default:
+      return 'en-US'
+  }
+}
+
 interface Props {
   pairs: SubtitlePair[]
   interim: string
@@ -59,7 +72,7 @@ export function StreamPage({ pairs, interim, pipelineState, sendCmd, showStopToa
     prevPairsLen.current = pairs.length
     for (const pair of newPairs) {
       const utterance = new SpeechSynthesisUtterance(pair.target)
-      utterance.lang = targetLang === 'zh' ? 'zh-CN' : targetLang === 'ja' ? 'ja-JP' : targetLang === 'es' ? 'es-ES' : 'en-US'
+      utterance.lang = getSpeechLang(targetLang)
       window.speechSynthesis.speak(utterance)
     }
   }, [pairs, ttsEnabled, targetLang])

@@ -22,6 +22,7 @@ func newWebCmd() *cobra.Command {
 				BaseURL:          cfg.BaseURL,
 				DeepgramAPIKey:   cfg.DeepgramAPIKey,
 				Port:             port,
+				PublicBaseURL:    cfg.PublicBaseURL,
 				LiveKitURL:       cfg.LiveKitURL,
 				LiveKitAPIKey:    cfg.LiveKitAPIKey,
 				LiveKitAPISecret: cfg.LiveKitAPISecret,

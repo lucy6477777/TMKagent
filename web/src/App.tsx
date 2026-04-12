@@ -8,19 +8,25 @@ import { RtcPage } from './pages/RtcPage'
 import { useWebSocket } from './hooks/useWebSocket'
 
 const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`
+const VALID_PAGES: Page[] = ['home', 'stream', 'transcript', 'rtc']
+
+function getInitialPage(): Page {
+  const page = new URLSearchParams(window.location.search).get('page')
+  return page && VALID_PAGES.includes(page as Page) ? (page as Page) : 'home'
+}
 
 export default function App() {
-  const [page, setPage] = useState<Page>('home')
+  const [page, setPage] = useState<Page>(() => getInitialPage())
   const [showStopToast, setShowStopToast] = useState(false)
 
-  const { pipelineState, pairs, interim, progress, sendCmd, clearPairs } = useWebSocket(WS_URL)
+  const { status, pipelineState, pairs, interim, progress, sendCmd, clearPairs } = useWebSocket(WS_URL)
 
   const isRunning = pipelineState === 'listening' || pipelineState === 'processing'
 
   const handleNavigate = useCallback((nextPage: Page) => {
     if (nextPage === page) return
     if ((page === 'stream' || page === 'rtc') && isRunning) {
-      sendCmd({ type: 'cmd', action: 'stop' })
+      sendCmd({ type: 'cmd', action: page === 'rtc' ? 'rtc_stop' : 'stop' })
       if (page === 'stream') setShowStopToast(true)
     }
     clearPairs()
@@ -57,6 +63,7 @@ export default function App() {
       )}
       {page === 'rtc' && (
         <RtcPage
+          wsStatus={status}
           pairs={pairs}
           interim={interim}
           pipelineState={pipelineState}

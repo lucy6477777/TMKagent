@@ -10,7 +10,8 @@ const LANGUAGES = [
   { value: 'ja', label: '日本語' },
 ]
 
-const ACCEPT_TYPES = '.wav,.mp3'
+const ACCEPT_TYPES = '.wav,.mp3,.m4a,.pcm,audio/wav,audio/x-wav,audio/mpeg,audio/mp4,audio/x-m4a'
+const SUPPORTED_EXTENSIONS = new Set(['wav', 'mp3', 'm4a', 'pcm'])
 
 interface Props {
   pairs: SubtitlePair[]
@@ -29,7 +30,22 @@ export function TranscriptPage({ pairs, pipelineState, progress, sendCmd, clearP
 
   const isProcessing = pipelineState === 'processing' || pipelineState === 'listening'
 
+  const validateFile = useCallback((file: File) => {
+    const extension = file.name.split('.').pop()?.toLowerCase() || ''
+    if (!SUPPORTED_EXTENSIONS.has(extension)) {
+      return '当前仅支持 WAV、MP3、M4A、PCM 音频文件'
+    }
+    return null
+  }, [])
+
   const uploadAndTranscribe = useCallback(async (file: File) => {
+    const validationError = validateFile(file)
+    if (validationError) {
+      setUploadError(validationError)
+      setFileName(null)
+      return
+    }
+
     setUploadError(null)
     setFileName(file.name)
     clearPairs()
@@ -46,7 +62,7 @@ export function TranscriptPage({ pairs, pipelineState, progress, sendCmd, clearP
       setUploadError(e instanceof Error ? e.message : 'Upload failed')
       setFileName(null)
     }
-  }, [sourceLang, targetLang, sendCmd, clearPairs])
+  }, [sourceLang, targetLang, sendCmd, clearPairs, validateFile])
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -124,7 +140,7 @@ export function TranscriptPage({ pairs, pipelineState, progress, sendCmd, clearP
         }}>
           {fileName
             ? `已选择：${fileName}`
-            : '拖拽 WAV / MP3 至此，或'}
+            : '拖拽 WAV / MP3 / M4A / PCM 至此，或'}
         </span>
         {!fileName && (
           <span style={{ fontSize: 14, fontFamily: "'IBM Plex Sans', sans-serif", color: '#1E3A5F', marginTop: 2 }}>
@@ -138,7 +154,7 @@ export function TranscriptPage({ pairs, pipelineState, progress, sendCmd, clearP
           onChange={handleFileInput}
           disabled={isProcessing}
           style={{ position: 'absolute', width: 1, height: 1, opacity: 0, overflow: 'hidden' }}
-          aria-label="选择音频文件（WAV 或 MP3）"
+          aria-label="选择音频文件（WAV、MP3、M4A 或 PCM）"
         />
       </label>
 
