@@ -8,15 +8,7 @@ import (
 )
 
 func TestLoad_MissingAPIKey(t *testing.T) {
-	orig := os.Getenv("OPENAI_API_KEY")
-	defer func() {
-		if orig == "" {
-			os.Unsetenv("OPENAI_API_KEY")
-		} else {
-			os.Setenv("OPENAI_API_KEY", orig)
-		}
-	}()
-	os.Unsetenv("OPENAI_API_KEY")
+	t.Setenv("OPENAI_API_KEY", "")
 
 	_, err := Load()
 	if err == nil {
@@ -28,10 +20,8 @@ func TestLoad_MissingAPIKey(t *testing.T) {
 }
 
 func TestLoad_ReadsEnvVars(t *testing.T) {
-	os.Setenv("OPENAI_API_KEY", "sk-test")
-	os.Setenv("OPENAI_BASE_URL", "https://custom.api/v1")
-	defer os.Unsetenv("OPENAI_API_KEY")
-	defer os.Unsetenv("OPENAI_BASE_URL")
+	t.Setenv("OPENAI_API_KEY", "sk-test")
+	t.Setenv("OPENAI_BASE_URL", "https://custom.api/v1")
 
 	cfg, err := Load()
 	if err != nil {
@@ -46,9 +36,8 @@ func TestLoad_ReadsEnvVars(t *testing.T) {
 }
 
 func TestLoad_DefaultBaseURL(t *testing.T) {
-	os.Setenv("OPENAI_API_KEY", "sk-test")
-	os.Unsetenv("OPENAI_BASE_URL")
-	defer os.Unsetenv("OPENAI_API_KEY")
+	t.Setenv("OPENAI_API_KEY", "sk-test")
+	t.Setenv("OPENAI_BASE_URL", "")
 
 	cfg, err := Load()
 	if err != nil {
@@ -60,8 +49,7 @@ func TestLoad_DefaultBaseURL(t *testing.T) {
 }
 
 func TestOverride(t *testing.T) {
-	os.Setenv("OPENAI_API_KEY", "sk-original")
-	defer os.Unsetenv("OPENAI_API_KEY")
+	t.Setenv("OPENAI_API_KEY", "sk-original")
 
 	cfg, _ := Load()
 	cfg.Override("sk-new", "https://new.api/v1", "dg-test")
@@ -77,8 +65,7 @@ func TestOverride(t *testing.T) {
 }
 
 func TestOverride_EmptyDoesNotReplace(t *testing.T) {
-	os.Setenv("OPENAI_API_KEY", "sk-original")
-	defer os.Unsetenv("OPENAI_API_KEY")
+	t.Setenv("OPENAI_API_KEY", "sk-original")
 
 	cfg, _ := Load()
 	cfg.Override("", "", "")

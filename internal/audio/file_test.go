@@ -93,6 +93,29 @@ func TestReadAudioFile_UnsupportedFormat(t *testing.T) {
 	}
 }
 
+func TestReadAudioFile_MP3(t *testing.T) {
+	tmp := filepath.Join(t.TempDir(), "test.mp3")
+	_ = os.WriteFile(tmp, []byte("fake-mp3-data"), 0644)
+
+	data, filename, err := ReadAudioFile(tmp)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if filename != "audio.mp3" {
+		t.Errorf("expected filename audio.mp3, got %q", filename)
+	}
+	if string(data) != "fake-mp3-data" {
+		t.Errorf("MP3 data should be returned as-is")
+	}
+}
+
+func TestReadAudioFile_NonexistentFile(t *testing.T) {
+	_, _, err := ReadAudioFile("/nonexistent/file.wav")
+	if err == nil {
+		t.Error("expected error for nonexistent file")
+	}
+}
+
 func TestInt16ToBytes_LittleEndian(t *testing.T) {
 	samples := []int16{0x0102, 0x0304}
 	b := Int16ToBytes(samples)
@@ -101,5 +124,12 @@ func TestInt16ToBytes_LittleEndian(t *testing.T) {
 	}
 	if b[0] != 0x02 || b[1] != 0x01 {
 		t.Errorf("little-endian encoding wrong: got %x %x", b[0], b[1])
+	}
+}
+
+func TestInt16ToBytes_Empty(t *testing.T) {
+	b := Int16ToBytes(nil)
+	if len(b) != 0 {
+		t.Errorf("expected empty, got %d bytes", len(b))
 	}
 }

@@ -111,3 +111,16 @@ func TestTTSPlayer_IsPlayingDefault(t *testing.T) {
 		t.Error("player should not be playing when freshly created")
 	}
 }
+
+func TestTTSPlayer_StopNoop(t *testing.T) {
+	player := NewPlayer(true)
+	player.Stop() // should not panic when stream is nil
+}
+
+func TestMockTTSClient_Error(t *testing.T) {
+	client := &mockTTSClient{err: io.ErrUnexpectedEOF}
+	_, err := client.Speak(context.Background(), "hello")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
