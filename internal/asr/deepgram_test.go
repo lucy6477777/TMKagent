@@ -1,45 +1,39 @@
-package unit_test
+package asr
 
 import (
 	"context"
 	"testing"
-
-	"github.com/lucyliuu/mini-tmk-agent/internal/asr"
 )
 
-// mockStreamSession implements asr.StreamSession for testing.
 type mockStreamSession struct {
-	results chan asr.TranscriptResult
+	results chan TranscriptResult
 	closed  bool
 }
 
 func newMockStreamSession() *mockStreamSession {
-	return &mockStreamSession{results: make(chan asr.TranscriptResult, 16)}
+	return &mockStreamSession{results: make(chan TranscriptResult, 16)}
 }
 
-func (m *mockStreamSession) Send(_ []byte) error   { return nil }
-func (m *mockStreamSession) Results() <-chan asr.TranscriptResult { return m.results }
-func (m *mockStreamSession) Close() error           { m.closed = true; close(m.results); return nil }
+func (m *mockStreamSession) Send(_ []byte) error            { return nil }
+func (m *mockStreamSession) Results() <-chan TranscriptResult { return m.results }
+func (m *mockStreamSession) Close() error                    { m.closed = true; close(m.results); return nil }
 
-// mockStreamClient implements asr.StreamClient for testing.
 type mockStreamClient struct {
 	session *mockStreamSession
 }
 
-func (m *mockStreamClient) Connect(_ context.Context, _ string) (asr.StreamSession, error) {
+func (m *mockStreamClient) Connect(_ context.Context, _ string) (StreamSession, error) {
 	return m.session, nil
 }
 
-// Compile-time interface checks.
-var _ asr.StreamClient = (*mockStreamClient)(nil)
-var _ asr.StreamSession = (*mockStreamSession)(nil)
+var _ StreamClient = (*mockStreamClient)(nil)
+var _ StreamSession = (*mockStreamSession)(nil)
 
 func TestStreamSession_InterimAndFinal(t *testing.T) {
 	sess := newMockStreamSession()
 
-	// Simulate Deepgram sending interim then final result
-	sess.results <- asr.TranscriptResult{Text: "hello", IsFinal: false}
-	sess.results <- asr.TranscriptResult{Text: "hello world", IsFinal: true}
+	sess.results <- TranscriptResult{Text: "hello", IsFinal: false}
+	sess.results <- TranscriptResult{Text: "hello world", IsFinal: true}
 
 	r1 := <-sess.Results()
 	if r1.IsFinal {

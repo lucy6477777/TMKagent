@@ -1,4 +1,4 @@
-.PHONY: build web-build web-dev test test-integration lint clean
+.PHONY: build web-build web-dev test test-cover test-integration lint clean
 
 BINARY := bin/mini-tmk-agent
 
@@ -14,8 +14,13 @@ web-dev:
 build: web-build
 	go build -o $(BINARY) ./cmd/mini-tmk-agent
 
+GO_PACKAGES := $(shell go list ./... | grep -v /web/node_modules)
+
 test:
-	go test ./... -v
+	go test $(GO_PACKAGES) -v
+
+test-cover:
+	go test ./config/... ./internal/... -cover
 
 test-integration:
 	go test -tags integration ./tests/integration/... -v -timeout 60s
