@@ -1,13 +1,24 @@
-package config
+package unit_test
 
 import (
+	"os"
 	"strings"
 	"testing"
+
+	"github.com/lucyliuu/mini-tmk-agent/config"
 )
 
 func TestLoad_MissingAPIKey(t *testing.T) {
-	t.Setenv("OPENAI_API_KEY", "")
-	_, err := Load()
+	orig := os.Getenv("OPENAI_API_KEY")
+	defer func() {
+		if orig == "" {
+			os.Unsetenv("OPENAI_API_KEY")
+		} else {
+			os.Setenv("OPENAI_API_KEY", orig)
+		}
+	}()
+	os.Unsetenv("OPENAI_API_KEY")
+	_, err := config.Load()
 	if err == nil {
 		t.Fatal("expected error when OPENAI_API_KEY is missing")
 	}
@@ -17,10 +28,12 @@ func TestLoad_MissingAPIKey(t *testing.T) {
 }
 
 func TestLoad_ReadsEnvVars(t *testing.T) {
-	t.Setenv("OPENAI_API_KEY", "sk-test")
-	t.Setenv("OPENAI_BASE_URL", "https://custom.api/v1")
+	os.Setenv("OPENAI_API_KEY", "sk-test")
+	os.Setenv("OPENAI_BASE_URL", "https://custom.api/v1")
+	defer os.Unsetenv("OPENAI_API_KEY")
+	defer os.Unsetenv("OPENAI_BASE_URL")
 
-	cfg, err := Load()
+	cfg, err := config.Load()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -33,10 +46,11 @@ func TestLoad_ReadsEnvVars(t *testing.T) {
 }
 
 func TestLoad_DefaultBaseURL(t *testing.T) {
-	t.Setenv("OPENAI_API_KEY", "sk-test")
-	t.Setenv("OPENAI_BASE_URL", "")
+	os.Setenv("OPENAI_API_KEY", "sk-test")
+	os.Unsetenv("OPENAI_BASE_URL")
+	defer os.Unsetenv("OPENAI_API_KEY")
 
-	cfg, err := Load()
+	cfg, err := config.Load()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -46,9 +60,10 @@ func TestLoad_DefaultBaseURL(t *testing.T) {
 }
 
 func TestOverride(t *testing.T) {
-	t.Setenv("OPENAI_API_KEY", "sk-original")
+	os.Setenv("OPENAI_API_KEY", "sk-original")
+	defer os.Unsetenv("OPENAI_API_KEY")
 
-	cfg, _ := Load()
+	cfg, _ := config.Load()
 	cfg.Override("sk-new", "https://new.api/v1", "dg-test")
 	if cfg.APIKey != "sk-new" {
 		t.Errorf("Override did not update APIKey")
@@ -62,9 +77,10 @@ func TestOverride(t *testing.T) {
 }
 
 func TestOverride_EmptyDoesNotReplace(t *testing.T) {
-	t.Setenv("OPENAI_API_KEY", "sk-original")
+	os.Setenv("OPENAI_API_KEY", "sk-original")
+	defer os.Unsetenv("OPENAI_API_KEY")
 
-	cfg, _ := Load()
+	cfg, _ := config.Load()
 	cfg.Override("", "", "")
 	if cfg.APIKey != "sk-original" {
 		t.Errorf("Override with empty apiKey should not replace existing value")

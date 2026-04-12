@@ -1,4 +1,4 @@
-package display
+package unit_test
 
 import (
 	"bytes"
@@ -6,6 +6,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/lucyliuu/mini-tmk-agent/internal/display"
 )
 
 func captureStdout(f func()) string {
@@ -22,7 +24,7 @@ func captureStdout(f func()) string {
 
 func TestPrint_ContainsSourceAndTarget(t *testing.T) {
 	out := captureStdout(func() {
-		Print(Pair{Source: "你好世界", Target: "Hello World"})
+		display.Print(display.Pair{Source: "你好世界", Target: "Hello World"})
 	})
 	if !strings.Contains(out, "你好世界") {
 		t.Errorf("output missing source text; got: %q", out)
@@ -34,7 +36,7 @@ func TestPrint_ContainsSourceAndTarget(t *testing.T) {
 
 func TestPrint_ContainsSRCAndTGTLabels(t *testing.T) {
 	out := captureStdout(func() {
-		Print(Pair{Source: "x", Target: "y"})
+		display.Print(display.Pair{Source: "x", Target: "y"})
 	})
 	if !strings.Contains(out, "[SRC]") {
 		t.Errorf("output missing [SRC] label; got: %q", out)
@@ -46,7 +48,7 @@ func TestPrint_ContainsSRCAndTGTLabels(t *testing.T) {
 
 func TestWriter_PrintInterim(t *testing.T) {
 	var buf bytes.Buffer
-	w := NewWriterTo(&buf)
+	w := display.NewWriterTo(&buf)
 	w.PrintInterim("hello")
 
 	out := buf.String()
@@ -63,8 +65,8 @@ func TestWriter_PrintInterim(t *testing.T) {
 
 func TestWriter_PrintFinal(t *testing.T) {
 	var buf bytes.Buffer
-	w := NewWriterTo(&buf)
-	w.PrintFinal(Pair{Source: "你好", Target: "Hello"})
+	w := display.NewWriterTo(&buf)
+	w.PrintFinal(display.Pair{Source: "你好", Target: "Hello"})
 
 	out := buf.String()
 	if !strings.Contains(out, "[SRC]") {
@@ -83,7 +85,7 @@ func TestWriter_PrintFinal(t *testing.T) {
 
 func TestWriter_ClearInterim(t *testing.T) {
 	var buf bytes.Buffer
-	w := NewWriterTo(&buf)
+	w := display.NewWriterTo(&buf)
 	w.PrintInterim("temp")
 	buf.Reset()
 	w.ClearInterim()
@@ -96,7 +98,7 @@ func TestWriter_ClearInterim(t *testing.T) {
 
 func TestWriter_ClearInterim_NoopWhenNoInterim(t *testing.T) {
 	var buf bytes.Buffer
-	w := NewWriterTo(&buf)
+	w := display.NewWriterTo(&buf)
 	w.ClearInterim()
 
 	if buf.Len() != 0 {

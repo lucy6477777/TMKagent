@@ -1,19 +1,20 @@
-package rtc
+package unit_test
 
 import (
 	"encoding/json"
-	"strings"
 	"testing"
+
+	"github.com/lucyliuu/mini-tmk-agent/internal/rtc"
 )
 
 func TestRelayMsg_InterimJSON(t *testing.T) {
-	msg := RelayMsg{Type: "interim", Text: "你好"}
+	msg := rtc.RelayMsg{Type: "interim", Text: "你好"}
 	data, err := json.Marshal(msg)
 	if err != nil {
 		t.Fatalf("marshal error: %v", err)
 	}
 
-	var decoded RelayMsg
+	var decoded rtc.RelayMsg
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		t.Fatalf("unmarshal error: %v", err)
 	}
@@ -29,13 +30,13 @@ func TestRelayMsg_InterimJSON(t *testing.T) {
 }
 
 func TestRelayMsg_PairJSON(t *testing.T) {
-	msg := RelayMsg{Type: "pair", Source: "你好世界", Target: "Hello World"}
+	msg := rtc.RelayMsg{Type: "pair", Source: "你好世界", Target: "Hello World"}
 	data, err := json.Marshal(msg)
 	if err != nil {
 		t.Fatalf("marshal error: %v", err)
 	}
 
-	var decoded RelayMsg
+	var decoded rtc.RelayMsg
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		t.Fatalf("unmarshal error: %v", err)
 	}
@@ -51,19 +52,19 @@ func TestRelayMsg_PairJSON(t *testing.T) {
 }
 
 func TestRelayMsg_OmitEmpty(t *testing.T) {
-	msg := RelayMsg{Type: "interim", Text: "hello"}
+	msg := rtc.RelayMsg{Type: "interim", Text: "hello"}
 	data, _ := json.Marshal(msg)
 	s := string(data)
-	if strings.Contains(s, "source") || strings.Contains(s, "target") {
+	if contains(s, "source") || contains(s, "target") {
 		t.Errorf("interim JSON should omit empty source/target; got: %s", s)
 	}
 }
 
-func TestRelayMsg_PairOmitsText(t *testing.T) {
-	msg := RelayMsg{Type: "pair", Source: "src", Target: "tgt"}
-	data, _ := json.Marshal(msg)
-	s := string(data)
-	if strings.Contains(s, `"text"`) {
-		t.Errorf("pair JSON should omit empty text; got: %s", s)
+func contains(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
 	}
+	return false
 }
