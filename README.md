@@ -185,9 +185,15 @@ make test
 # 覆盖率报告
 make test-cover
 
-# 集成测试（需要 OPENAI_API_KEY）
-OPENAI_API_KEY=sk-... make test-integration
+# 集成测试（需要 OPENAI_API_KEY，从 .env 或环境变量自动读取）
+make test-integration
 ```
+
+集成测试覆盖：
+- **Whisper 转录**：上传真实音频文件，验证 pipeline 完整运行
+- **GPT-4o-mini 翻译**：中→英、英→中、多语言，验证 prompt 格式和响应解析
+- **OpenAI TTS**：验证 API 返回合法 PCM 字节流
+- **Web WebSocket**：上传文件 → transcript 命令 → 完整收取消息直到 idle；stop 命令；无文件 transcript 报错
 
 ---
 
@@ -471,9 +477,15 @@ make test
 # Coverage report
 make test-cover
 
-# Integration tests — requires OPENAI_API_KEY
-OPENAI_API_KEY=sk-... make test-integration
+# Integration tests — reads OPENAI_API_KEY automatically from .env or environment
+make test-integration
 ```
+
+Integration test coverage:
+- **Whisper transcription**: uploads a real audio file and verifies the full pipeline completes
+- **GPT-4o-mini translation**: zh→en, en→zh, multi-language — validates prompt format and response parsing against the live API
+- **OpenAI TTS**: verifies the API returns a valid PCM byte stream
+- **Web WebSocket**: upload file → send `transcript` command → collect messages until idle; `stop` command; transcript with no file uploaded returns an error
 
 ---
 
