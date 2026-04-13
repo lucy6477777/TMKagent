@@ -18,11 +18,13 @@ You need:
 - **`LIVEKIT_URL` / `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET`** only for RTC relay
 
 **macOS:**
+
 ```bash
 brew install portaudio
 ```
 
 **Linux (Ubuntu/Debian):**
+
 ```bash
 sudo apt install portaudio19-dev libportaudio2
 ```
@@ -79,15 +81,15 @@ cp .env.example .env
 
 The program automatically loads `.env` on startup — no need to `export` manually. Open `.env` and fill in:
 
-| Variable | Required? | Used by | Where to get it |
-|----------|-----------|---------|-----------------|
-| `OPENAI_API_KEY` | Yes | transcript / web / translation / TTS | [platform.openai.com](https://platform.openai.com/api-keys) |
-| `DEEPGRAM_API_KEY` | Yes for real-time stream | CLI `stream`, Web realtime pages | [console.deepgram.com](https://console.deepgram.com) |
-| `LIVEKIT_URL` | Optional | RTC relay only | [cloud.livekit.io](https://cloud.livekit.io) |
-| `LIVEKIT_API_KEY` | Optional | RTC relay only | Same as above |
-| `LIVEKIT_API_SECRET` | Optional | RTC relay only | Same as above |
-| `OPENAI_BASE_URL` | Optional | Custom proxy / compatible endpoint | Your provider |
-| `WEB_PUBLIC_BASE_URL` | Optional | Web QR code / phone access | Your own public URL |
+| Variable              | Required?                | Used by                              | Where to get it                                             |
+| --------------------- | ------------------------ | ------------------------------------ | ----------------------------------------------------------- |
+| `OPENAI_API_KEY`      | Yes                      | transcript / web / translation / TTS | [platform.openai.com](https://platform.openai.com/api-keys) |
+| `DEEPGRAM_API_KEY`    | Yes for real-time stream | CLI `stream`, Web realtime pages     | [console.deepgram.com](https://console.deepgram.com)        |
+| `LIVEKIT_URL`         | Optional                 | RTC relay only                       | [cloud.livekit.io](https://cloud.livekit.io)                |
+| `LIVEKIT_API_KEY`     | Optional                 | RTC relay only                       | Same as above                                               |
+| `LIVEKIT_API_SECRET`  | Optional                 | RTC relay only                       | Same as above                                               |
+| `OPENAI_BASE_URL`     | Optional                 | Custom proxy / compatible endpoint   | Your provider                                               |
+| `WEB_PUBLIC_BASE_URL` | Optional                 | Web QR code / phone access           | Your own public URL                                         |
 
 > **Note:** `.env` is git-ignored. Your keys stay local and never get pushed to GitHub.
 
@@ -115,6 +117,7 @@ This mode requires:
 ```
 
 Output example:
+
 ```
 [...] 今天天气        ← interim (gray, updating as you speak)
 [SRC] 今天天气真好
