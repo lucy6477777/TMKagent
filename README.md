@@ -59,7 +59,7 @@ sudo apt install portaudio19-dev libportaudio2
 
 ```bash
 # 1. 克隆并编译
-git clone https://github.com/lucyliuu/mini-tmk-agent
+git clone https://github.com/lucy6477777/mini-tmk-agent.git
 cd mini-tmk-agent
 make build
 
